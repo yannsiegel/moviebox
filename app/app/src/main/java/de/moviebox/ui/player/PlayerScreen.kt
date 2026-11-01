@@ -16,7 +16,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,7 +60,7 @@ fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit, onPlayNext
     val streamUrl = remember(mediaId) { Api.streamUrl(mediaId) }
     // scope kept alive for the final resume write on exit
     val finalScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
-    var nextEpisode by androidx.compose.runtime.mutableStateOf<MediaCard?>(null).let { androidx.compose.runtime.remember { it } }
+    var nextEpisode by remember { mutableStateOf<MediaCard?>(null) }
 
     val player = remember {
         val sourceFactory = DefaultMediaSourceFactory(context).setDataSourceFactory(
@@ -71,7 +74,7 @@ fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit, onPlayNext
     }
 
     // Listen for playback end; if this is an episode, offer the next one.
-    androidx.compose.runtime.DisposableEffect(mediaId) {
+    DisposableEffect(mediaId) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) {
