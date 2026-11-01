@@ -21,6 +21,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,6 +62,7 @@ fun ShowDetailScreen(showId: String, onBack: () -> Unit, onPlay: (String, String
     val scope = rememberCoroutineScope()
     var show by remember { mutableStateOf<ShowDetail?>(null) }
     var seasons by remember { mutableStateOf<Map<String, List<MediaCard>>>(emptyMap()) }
+    var subscribed by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf<MediaCard?>(null) }
 
@@ -69,6 +72,7 @@ fun ShowDetailScreen(showId: String, onBack: () -> Unit, onPlay: (String, String
             val resp = Api.service.show(showId)
             show = resp.show
             seasons = resp.seasons
+            subscribed = resp.subscribed
         } catch (ex: Exception) {
             error = ex.message
         }
@@ -79,6 +83,7 @@ fun ShowDetailScreen(showId: String, onBack: () -> Unit, onPlay: (String, String
             val resp = Api.service.show(showId)
             show = resp.show
             seasons = resp.seasons
+            subscribed = resp.subscribed
         } catch (_: Exception) {}
     }
 
@@ -110,6 +115,27 @@ fun ShowDetailScreen(showId: String, onBack: () -> Unit, onPlay: (String, String
                     if (!s.overview.isNullOrEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         Text(s.overview, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    FilledTonalButton(
+                        onClick = {
+                            val next = !subscribed
+                            subscribed = next
+                            scope.launch {
+                                try {
+                                    if (next) Api.service.subscribeShow(showId) else Api.service.unsubscribeShow(showId)
+                                } catch (_: Exception) { subscribed = !next }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            if (subscribed) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
+                            contentDescription = null,
+                            tint = if (subscribed) Color(0xFFE94560) else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (subscribed) "Abonniert" else "Abonnieren")
                     }
                 }
             }

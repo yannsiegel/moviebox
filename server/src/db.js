@@ -78,7 +78,10 @@ export async function prepareUserDb() {
   await db.jobs.createIndex({ status: 1, priority: -1, createdAt: 1 });
   await db.jobs.createIndex({ sourceId: 1 });
 
-  await db.subscriptions.createIndex({ url: 1 }, { unique: true });
+  await db.subscriptions.createIndex({ showId: 1 }, { unique: true });
+  await db.subscriptions.createIndex({ tmdbId: 1 });
+
+  await db.watchlists.createIndex({ createdAt: -1 });
 
   await db.plays.createIndex({ at: -1 });
   await db.resume.createIndex({ mediaId: 1 }, { unique: true });

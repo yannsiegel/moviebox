@@ -419,6 +419,7 @@
     const playLabel = positionSec > 15 ? `Fortsetzen bei ${formatTime(positionSec)}` : 'Abspielen';
     buttons.appendChild(el('button', { class: 'play', onClick: () => play({ id, title: movie.title, positionSec }) }, '▶  ' + playLabel));
     buttons.appendChild(likeButton(id, movie.liked));
+    buttons.appendChild(watchlistButton({ mediaId: id, kind: 'movie' }, movie.title));
     buttons.appendChild(deleteButton(id, movie.title, () => nav('movies')));
     info.appendChild(buttons);
 
@@ -446,6 +447,68 @@
     return btn;
   }
 
+  function subscribeButton(showId, initial) {
+    const btn = el('button', { style: 'padding:12px 16px;border-radius:10px;background:transparent;cursor:pointer;font-size:16px' });
+    const render = (sub) => {
+      btn.textContent = sub ? '🔔  Abonniert' : '🔔  Abonnieren';
+      btn.style.border = `1px solid ${sub ? 'var(--accent)' : 'var(--border)'}`;
+      btn.style.color = sub ? 'var(--accent)' : 'var(--text)';
+      btn.dataset.sub = String(sub);
+    };
+    render(Boolean(initial));
+    btn.addEventListener('click', async () => {
+      const next = btn.dataset.sub !== 'true';
+      try {
+        await api(`/shows/${showId}/subscribe`, { method: next ? 'POST' : 'DELETE' });
+        render(next);
+        toast(next ? 'Abonniert – neue folgen werden automatisch geholt' : 'Abo entfernt', 'ok');
+      } catch (err) { toast(err.message, 'err'); }
+    });
+    return btn;
+  }
+
+  function watchlistButton({ mediaId, kind }, label) {
+    const btn = el('button', { style: 'padding:12px 16px;border-radius:10px;background:transparent;color:var(--text);border:1px solid var(--border);cursor:pointer;font-size:16px' }, '☰  Zur liste …');
+    btn.addEventListener('click', async () => {
+      openModal(async (body) => {
+        body.appendChild(el('h2', {}, 'Zur Liste hinzufügen'));
+        body.appendChild(el('p', { style: 'color:var(--muted);font-size:13px;margin:0 0 10px' }, `„${label}" einer deiner listen zuordnen.`));
+        const lists = (await api('/watchlists')).watchlists;
+        if (!lists.length) {
+          body.appendChild(el('div', { class: 'empty', style: 'padding:14px;margin:10px 0' }, 'Noch keine listen.'));
+        } else {
+          for (const list of lists) {
+            const row = el('div', { class: 'row' });
+            row.appendChild(el('div', { class: 'name' }, [list.name, el('div', { style: 'color:var(--muted);font-size:12px' }, `${list.items.length} einträge`)]));
+            row.appendChild(el('button', { class: 'primary', onClick: async () => {
+              try {
+                await api(`/watchlists/${list.id}/items`, { method: 'POST', body: { mediaId, kind } });
+                toast(`Zur liste „${list.name}" hinzugefügt`, 'ok');
+                $('#modal').hidden = true;
+              } catch (err) { toast(err.message, 'err'); }
+            } }, 'Hinzufügen'));
+            body.appendChild(row);
+          }
+        }
+        // create new list
+        const form = el('div', { class: 'form-row', style: 'margin-top:14px' });
+        const nameIn = el('input', { placeholder: 'Neue liste …' });
+        form.appendChild(nameIn);
+        form.appendChild(el('button', { class: 'primary', onClick: async () => {
+          if (!nameIn.value.trim()) return;
+          try {
+            const list = await api('/watchlists', { method: 'POST', body: { name: nameIn.value.trim() } });
+            await api(`/watchlists/${list.id}/items`, { method: 'POST', body: { mediaId, kind } });
+            toast(`Zur neuen liste „${list.name}" hinzugefügt`, 'ok');
+            $('#modal').hidden = true;
+          } catch (err) { toast(err.message, 'err'); }
+        } }, 'Anlegen'));
+        body.appendChild(form);
+      });
+    });
+    return btn;
+  }
+
   function deleteButton(mediaId, label, onDone) {
     const btn = el('button', { style: 'padding:12px 16px;border-radius:10px;background:transparent;color:var(--err);border:1px solid var(--err);cursor:pointer;font-size:16px' }, '🗑  Löschen');
     btn.addEventListener('click', async () => {
@@ -460,7 +523,7 @@
   }
 
   async function renderShowDetail(container, id) {
-    const { show, seasons } = await api(`/shows/${id}`);
+    const { show, seasons, subscribed } = await api(`/shows/${id}`);
     container.innerHTML = '';
     const wrap = el('div', { class: 'detail' });
     const poster = el('div', { class: 'poster' });
@@ -470,6 +533,11 @@
     info.appendChild(el('h2', {}, show.title));
     if (show.year) info.appendChild(el('div', { class: 'sub' }, String(show.year)));
     if (show.overview) info.appendChild(el('p', { class: 'overview' }, show.overview));
+
+    const buttons = el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;margin-top:12px' });
+    buttons.appendChild(subscribeButton(id, subscribed));
+    info.appendChild(buttons);
+
     wrap.appendChild(info);
     container.appendChild(wrap);
     for (const [season, eps] of Object.entries(seasons).sort((a, b) => Number(a[0]) - Number(b[0]))) {
@@ -765,6 +833,48 @@
     });
   }
 
+  async function openWatchlists() {
+    openModal(async (body) => {
+      body.appendChild(el('h2', {}, 'Listen'));
+      const render = async () => {
+        for (const n of body.querySelectorAll('.list-block, .form-row, .empty')) n.remove();
+        const lists = (await api('/watchlists')).watchlists;
+        if (!lists.length) {
+          body.appendChild(el('div', { class: 'empty', style: 'padding:14px;margin:10px 0' }, 'Noch keine listen.'));
+        }
+        for (const list of lists) {
+          const block = el('div', { class: 'list-block', style: 'margin-top:16px' });
+          const header = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:6px' });
+          header.appendChild(el('div', { style: 'flex:1;font-weight:600' }, [list.name, el('span', { style: 'color:var(--muted);font-weight:400;font-size:12px;margin-left:8px' }, `${list.items.length} einträge`)]));
+          header.appendChild(el('button', { class: 'danger', onClick: async () => {
+            if (!confirm(`Liste „${list.name}" löschen? Einträge bleiben in deiner Bibliothek.`)) return;
+            await api('/watchlists/' + list.id, { method: 'DELETE' });
+            render();
+          } }, 'Löschen'));
+          block.appendChild(header);
+          if (!list.items.length) block.appendChild(el('div', { style: 'color:var(--muted);font-size:13px;padding:8px 0' }, 'Leer. Öffne einen film und klick „Zur liste …".'));
+          else {
+            const grid = el('div', { class: 'grid' });
+            for (const it of list.items) grid.appendChild(it.kind === 'episode' ? cardEpisode(it) : cardMovie(it));
+            block.appendChild(grid);
+          }
+          body.appendChild(block);
+        }
+        // create new list
+        const form = el('div', { class: 'form-row', style: 'margin-top:16px' });
+        const nameIn = el('input', { placeholder: 'Neue liste …' });
+        form.appendChild(nameIn);
+        form.appendChild(el('button', { class: 'primary', onClick: async () => {
+          if (!nameIn.value.trim()) return;
+          await api('/watchlists', { method: 'POST', body: { name: nameIn.value.trim() } });
+          render();
+        } }, 'Anlegen'));
+        body.appendChild(form);
+      };
+      render();
+    });
+  }
+
   async function openAdmin() {
     openModal(async (body) => {
       body.appendChild(el('h2', {}, 'Admin'));
@@ -884,6 +994,7 @@
     } catch (err) { toast(err.message, 'err'); }
   });
   $('#favorites-btn').addEventListener('click', () => nav('favorites'));
+  $('#watchlists-btn').addEventListener('click', openWatchlists);
   $('#url-btn').addEventListener('click', openUrlSource);
   $('#upload-btn').addEventListener('click', () => $('#file-picker').click());
   $('#scan-btn').addEventListener('click', triggerScan);

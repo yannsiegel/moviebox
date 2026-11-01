@@ -9,6 +9,7 @@ import { startScanner } from './scanner.js';
 import { startMetadataWorker } from './metadata.js';
 import { startDownloader } from './downloader.js';
 import { startCleanup } from './cleanup.js';
+import { startSubscriptions } from './subscriptions.js';
 import { ensureAdmin, listUsers, prepareUser } from './users.js';
 
 await connectDb();
@@ -42,6 +43,7 @@ startScanner();
 startMetadataWorker();
 startDownloader();
 startCleanup();
+startSubscriptions();
 
 async function shutdown() {
   server.close();

@@ -12,7 +12,7 @@ Als Vorbild dient [TuneBox](https://github.com/yannsiegel/tunebox) – der Grund
                           └──── liefert Videodateien direkt aus (X-Accel-Redirect)
 ```
 
-## Funktionen (Stufe 2.4 – aktueller Stand)
+## Funktionen (Stufe 2.5 – aktueller Stand)
 
 - **Ordner-Scanner**: Legt du eine Videodatei nach `/srv/moviebox/media/`, taucht sie innerhalb weniger Minuten in der Bibliothek auf. Umbenennen oder Löschen wirkt genauso.
 - **Upload direkt per Web und App**: Drag & Drop ins browserfenster oder Taste in der oberen Leiste. Die Datei landet im Medienordner, der Scanner holt sie sofort rein.
@@ -30,6 +30,8 @@ Als Vorbild dient [TuneBox](https://github.com/yannsiegel/tunebox) – der Grund
 - **Nächste Folge automatisch**: nach ende einer episode zeigt der player direkt die nächste (web: countdown-overlay mit cancel; android: dialog). Endlos-serien-schauen ohne tappen.
 - **Multi-track im Player**: embedded audio-spuren + alle untertitel (sidecar und embedded auf android) switchbar während der wiedergabe. Web: standard-video-controls; Android: Media3-untertitel-knopf.
 - **OpenSubtitles-nachlader** (optional): hat ein film keine deutsche oder englische untertiteldatei neben sich, fragt moviebox automatisch bei opensubtitles.com und lädt das best-bewertete .srt dort nach. Braucht API-Key + Login in `.env`.
+- **Serien-Abos** (set & forget): auf der serien-detail-seite „Abonnieren" tippen → MovieBox prüft alle 6 h über TMDB auf neue folgen und holt sie automatisch über TorrentIO. Braucht TMDB-Key und webtorrent.
+- **Watchlists / Listen**: eigene sammlungen anlegen („Für später", „Weihnachten", „Mit Marie schauen"), einträge aus film-detail per „Zur liste …"-button zufügen. ☰-icon in der topbar öffnet die liste.
 - **Automatische Metadaten** von TMDB: Poster, Backdrops, Beschreibungen, Originaltitel, Veröffentlichungsjahr, Genres, Episoden-Titel und -Bilder. Ohne TMDB-Key funktioniert die Bibliothek weiter – nur mit Datei-Namen als Titel.
 - **Serien-Erkennung** aus Dateinamen: `S01E02`, `1x02`, Ordnerstruktur `Serie/Season 1/02 - Titel.mkv`.
 - **Direct-Play** über HTML5 `<video>` bzw. ExoPlayer: der Server reicht die Datei durch, keine Umkodierung nötig solange der Client das Format kann (fast immer bei MP4/MKV/H.264/H.265).

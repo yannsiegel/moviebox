@@ -85,6 +85,9 @@ interface MovieBoxService {
     @GET("random") suspend fun random(): RandomResponse
     @GET("episodes/{id}/next") suspend fun episodeNext(@Path("id") id: String): NextEpisodeResponse
 
+    @POST("shows/{id}/subscribe") suspend fun subscribeShow(@Path("id") id: String): Map<String, Boolean>
+    @retrofit2.http.DELETE("shows/{id}/subscribe") suspend fun unsubscribeShow(@Path("id") id: String): Map<String, Boolean>
+
     @GET("discover/sources") suspend fun discoverSources(
         @Query("tmdbId") tmdbId: Long? = null,
         @Query("kind") kind: String? = null,

@@ -161,6 +161,10 @@ Die haltezeit für preview-dateien steht in `/opt/moviebox/server/.env` als `PRE
 
 **Untertitel automatisch nachladen** – wenn du einen OpenSubtitles-API-Key + login in `.env` einträgst (`OPEN_SUBTITLES_API_KEY=…`, `OPEN_SUBTITLES_USERNAME=…`, `OPEN_SUBTITLES_PASSWORD=…`), lädt moviebox nach jedem erfolgreichen TMDB-match die fehlenden deutschen und englischen .srt-dateien automatisch nach. API-key kostenlos auf https://www.opensubtitles.com/consumers (account anlegen → `New Consumer`), login ist dein normaler account.
 
+**Serien abonnieren** – auf der serien-detail-seite den 🔔-knopf tippen. Alle 6 h prüft moviebox über TMDB, ob neue folgen deiner abonnierten serien ausgestrahlt wurden, und holt sie automatisch über TorrentIO (bester seeder gewinnt). Braucht: TMDB-key + webtorrent installiert.
+
+**Watchlists / listen** – ☰-icon in der topbar (web) zeigt alle listen. Im film-detail der button „Zur liste …" fügt den film hinzu (du kannst von dort auch gleich eine neue liste anlegen). API: `GET/POST/DELETE /api/watchlists`, `POST/DELETE /api/watchlists/:id/items`.
+
 **Admin (⚙ im Web)** – konten anlegen und löschen, status mit job-zahlen (wie viele filme/serien, wie viele im scan, uptime), scan sofort auslösen, server-token rotieren.
 
 **Scan sofort auslösen** – oben rechts auf **↻** in web oder app. Oder per API siehe schritt 2 unten.
@@ -185,6 +189,15 @@ Alle authentifizierten Endpoints erwarten `Authorization: Bearer <token>` oder b
 | `GET`  | `/api/shows/:id` | Serie mit allen Staffeln & Folgen. |
 | `GET`  | `/api/episodes/:id` | Folge-Details. |
 | `GET`  | `/api/episodes/:id/next` | Nächste folge (für autoplay). |
+| `GET`  | `/api/subscriptions` | Alle serien-abos. |
+| `POST` | `/api/shows/:id/subscribe` | Serie abonnieren. |
+| `DELETE` | `/api/shows/:id/subscribe` | Abo aufheben. |
+| `POST` | `/api/subscriptions/check` | Alle abos sofort prüfen (admin). |
+| `GET`  | `/api/watchlists` | Alle listen + einträge. |
+| `POST` | `/api/watchlists` | Liste anlegen (`{name}`). |
+| `DELETE` | `/api/watchlists/:id` | Liste löschen. |
+| `POST` | `/api/watchlists/:id/items` | Eintrag hinzufügen (`{mediaId, kind}`). |
+| `DELETE` | `/api/watchlists/:id/items/:mediaId` | Eintrag entfernen. |
 | `GET`  | `/api/media/:id/stream` | Stream der Mediendatei. |
 | `GET`  | `/api/media/:id/subtitles/:index` | Untertitel-Sidecar. |
 | `GET`  | `/api/media/:id/resume` | Fortsetzen-Position. |

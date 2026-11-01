@@ -17,6 +17,7 @@ import { receiveUpload } from './uploads.js';
 import { isConfigured as tmdbEnabled, multiSearch, normalizeTmdb, trending } from './tmdb.js';
 import { events } from './events.js';
 import { capabilities as sourceCapabilities, probe as probeSource, searchSources } from './sources/index.js';
+import { checkAll as checkSubscriptions } from './subscriptions.js';
 
 export const api = express.Router();
 api.use(express.json({ limit: '1mb' }));
@@ -156,10 +157,13 @@ api.get('/shows', handle(async (_req, res) => {
 api.get('/shows/:id', handle(async (req, res) => {
   const show = await db.shows.findOne({ _id: toObjectId(req.params.id) });
   if (!show) return res.status(404).json({ error: 'Serie nicht gefunden' });
-  const episodes = await db.episodes.find({ showId: show._id }).sort({ season: 1, episode: 1 }).toArray();
+  const [episodes, subscription] = await Promise.all([
+    db.episodes.find({ showId: show._id }).sort({ season: 1, episode: 1 }).toArray(),
+    db.subscriptions.findOne({ showId: show._id }),
+  ]);
   const seasons = {};
   for (const ep of episodes) (seasons[ep.season] ||= []).push(listEpisode(ep));
-  res.json({ show: serialize(show), seasons });
+  res.json({ show: serialize(show), seasons, subscribed: Boolean(subscription) });
 }));
 
 api.get('/episodes/:id', handle(async (req, res) => {
@@ -408,6 +412,97 @@ api.get('/admin/status', requireAdmin, handle(async (_req, res) => {
 api.post('/admin/scan', requireAdmin, handle(async (_req, res) => {
   // the scan runs across every tenant, so it leaves the current withTenant context behind
   scanAll().catch((err) => console.error(`Manual scan: ${err.message}`));
+  res.json({ ok: true });
+}));
+
+// ---------- subscriptions (sonarr-style) ----------
+
+api.get('/subscriptions', handle(async (_req, res) => {
+  const subs = await db.subscriptions.find({}).sort({ title: 1 }).toArray();
+  res.json({ subscriptions: subs.map(serialize) });
+}));
+
+/** Toggle: subscribe to a show if not yet, unsubscribe otherwise. */
+api.post('/shows/:id/subscribe', handle(async (req, res) => {
+  const show = await db.shows.findOne({ _id: toObjectId(req.params.id) });
+  if (!show) return res.status(404).json({ error: 'Serie nicht gefunden' });
+  await db.subscriptions.updateOne(
+    { showId: show._id },
+    {
+      $setOnInsert: {
+        showId: show._id, tmdbId: show.tmdbId || null, title: show.title, createdAt: new Date(),
+      },
+      $set: { lastCheckedAt: null },
+    },
+    { upsert: true },
+  );
+  res.json({ ok: true, subscribed: true });
+}));
+
+api.delete('/shows/:id/subscribe', handle(async (req, res) => {
+  await db.subscriptions.deleteOne({ showId: toObjectId(req.params.id) });
+  res.json({ ok: true, subscribed: false });
+}));
+
+api.post('/subscriptions/check', requireAdmin, handle(async (_req, res) => {
+  // runs across every tenant, no context needed
+  checkSubscriptions().catch((err) => console.error(`Manual subscription check: ${err.message}`));
+  res.json({ ok: true });
+}));
+
+// ---------- watchlists ----------
+
+api.get('/watchlists', handle(async (_req, res) => {
+  const lists = await db.watchlists.find({}).sort({ createdAt: 1 }).toArray();
+  // hydrate items with a compact media card each
+  const out = [];
+  for (const list of lists) {
+    const items = [];
+    for (const item of list.items || []) {
+      const _id = toObjectId(item.mediaId);
+      if (!_id) continue;
+      if (item.kind === 'episode') {
+        const ep = await db.episodes.findOne({ _id });
+        if (ep) items.push(listEpisode(ep));
+      } else {
+        const movie = await db.movies.findOne({ _id });
+        if (movie) items.push(listMovie(movie));
+      }
+    }
+    out.push({ id: String(list._id), name: list.name, items });
+  }
+  res.json({ watchlists: out });
+}));
+
+api.post('/watchlists', handle(async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Name fehlt' });
+  const doc = { name, items: [], createdAt: new Date() };
+  const { insertedId } = await db.watchlists.insertOne(doc);
+  res.json({ id: String(insertedId), name, items: [] });
+}));
+
+api.delete('/watchlists/:id', handle(async (req, res) => {
+  await db.watchlists.deleteOne({ _id: toObjectId(req.params.id) });
+  res.json({ ok: true });
+}));
+
+api.post('/watchlists/:id/items', handle(async (req, res) => {
+  const _id = toObjectId(req.params.id);
+  const mediaId = String(req.body?.mediaId || '');
+  const kind = req.body?.kind === 'episode' ? 'episode' : 'movie';
+  if (!_id || !toObjectId(mediaId)) return res.status(400).json({ error: 'Ungültige ID' });
+  await db.watchlists.updateOne(
+    { _id, 'items.mediaId': { $ne: mediaId } },
+    { $push: { items: { mediaId, kind, addedAt: new Date() } } },
+  );
+  res.json({ ok: true });
+}));
+
+api.delete('/watchlists/:id/items/:mediaId', handle(async (req, res) => {
+  const _id = toObjectId(req.params.id);
+  if (!_id) return res.status(400).json({ error: 'Ungültige ID' });
+  await db.watchlists.updateOne({ _id }, { $pull: { items: { mediaId: req.params.mediaId } } });
   res.json({ ok: true });
 }));
 

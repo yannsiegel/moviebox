@@ -74,6 +74,7 @@ data class ShowDetail(
 data class ShowDetailResponse(
     val show: ShowDetail,
     val seasons: Map<String, List<MediaCard>>,
+    val subscribed: Boolean = false,
 )
 
 @Serializable
