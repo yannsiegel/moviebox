@@ -1,0 +1,16 @@
+[Unit]
+Description=MovieBox video server
+After=network.target mongod.service
+
+[Service]
+Type=simple
+User=moviebox
+WorkingDirectory=/opt/moviebox/server
+ExecStart=/usr/bin/node --env-file=/opt/moviebox/server/.env src/index.js
+Restart=on-failure
+# keep scans, downloads and ffmpeg transcodes from slowing down the other services on the box
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

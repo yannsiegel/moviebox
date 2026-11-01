@@ -1,0 +1,20 @@
+{
+  "name": "moviebox-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Private movie and series library: scans local folders, fetches metadata from TMDB, streams video to the MovieBox Android app and web player.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --env-file=.env src/index.js",
+    "dev": "node --env-file=.env --watch src/index.js",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20.6"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mongodb": "^6.12.0"
+  }
+}
