@@ -134,7 +134,19 @@ Häufigste Ursache: MongoDB nicht erreichbar. Prüfen: `sudo systemctl status mo
 **Metadaten-Worker scheint zu hängen**
 - `curl .../api/admin/status -H "Authorization: Bearer DEIN_API_TOKEN"` zeigt, wie viele Jobs `queued`, `running` oder `failed` sind. Logs: `sudo journalctl -u moviebox -f`.
 
-## 7. API-Endpunkte (Übersicht)
+## 7. Was du im Web und in der App machen kannst
+
+**Suche** – in der web-oberfläche oben in der mitte, in der app oben über das lupen-icon. Durchsucht deine lokale bibliothek nach titel.
+
+**Upload** – zieh die videodatei einfach ins browserfenster (ganzflächig drag&drop) oder klick oben rechts auf **⬆**. Die datei landet im medienordner, der scanner holt sie sofort rein – nach ein paar sekunden siehst du sie in der bibliothek.
+
+**Entdecken-Tab** – zeigt wöchentliche TMDB-trends und eine suche über TMDB. Herunterladen daraus geht nicht – aber du siehst was es gibt, wie der titel bei TMDB heißt (hilft beim benennen deiner dateien) und ob's als film oder serie geführt wird.
+
+**Admin (⚙ im Web)** – konten anlegen und löschen, status mit job-zahlen (wie viele filme/serien, wie viele im scan, uptime), scan sofort auslösen, server-token rotieren.
+
+**Scan sofort auslösen** – oben rechts auf **↻** in web oder app. Oder per API siehe schritt 2 unten.
+
+## 8. API-Endpunkte (Übersicht)
 
 Alle authentifizierten Endpoints erwarten `Authorization: Bearer <token>` oder bei `<video>`/`<audio>`-Elementen `?token=...` als Query.
 
@@ -164,3 +176,7 @@ Alle authentifizierten Endpoints erwarten `Authorization: Bearer <token>` oder b
 | `POST` | `/api/admin/server-token/rotate` | Neues `API_TOKEN` (Admin). |
 | `POST` | `/api/admin/scan` | Scan manuell auslösen (Admin). |
 | `GET`  | `/api/admin/status` | Server-Status + Job-Zahlen (Admin). |
+| `GET`  | `/api/search?q=…` | Lokale Suche (Filme, Serien, Folgen). |
+| `GET`  | `/api/discover/search?q=…` | TMDB-Volltextsuche (braucht TMDB-Key). |
+| `GET`  | `/api/discover/trending` | TMDB-Trends dieser Woche (braucht TMDB-Key). |
+| `POST` | `/api/upload` | Videodatei als Raw-Body hochladen (`X-Filename`-Header mit dem Dateinamen). |

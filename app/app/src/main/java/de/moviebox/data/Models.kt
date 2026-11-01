@@ -94,3 +94,25 @@ data class ResumePosition(val positionSec: Double = 0.0, val completed: Boolean 
 
 @Serializable
 data class ResumeUpdate(val positionSec: Double, val durationSec: Double)
+
+@Serializable
+data class SearchResponse(
+    val movies: List<MediaCard> = emptyList(),
+    val shows: List<ShowSummary> = emptyList(),
+    val episodes: List<MediaCard> = emptyList(),
+)
+
+@Serializable
+data class DiscoverItem(
+    val tmdbId: Long,
+    val kind: String,   // "movie" | "tv"
+    val title: String,
+    val year: String? = null,
+    val overview: String = "",
+    val poster: String? = null,
+    val backdrop: String? = null,
+    val rating: Double? = null,
+)
+
+@Serializable
+data class DiscoverResponse(val results: List<DiscoverItem> = emptyList())

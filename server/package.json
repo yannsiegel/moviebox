@@ -1,6 +1,6 @@
 {
   "name": "moviebox-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Private movie and series library: scans local folders, fetches metadata from TMDB, streams video to the MovieBox Android app and web player.",

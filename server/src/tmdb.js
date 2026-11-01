@@ -81,3 +81,32 @@ export async function seasonDetails(tmdbId, seasonNumber) {
 export async function episodeDetails(tmdbId, seasonNumber, episodeNumber) {
   return get(`/tv/${tmdbId}/season/${seasonNumber}/episode/${episodeNumber}`);
 }
+
+// -------- discovery (for the "find something to watch" UI)
+
+/** Full-text search across movies and tv in one call. */
+export async function multiSearch(query) {
+  const data = await get(`/search/multi?query=${encodeURIComponent(query)}&include_adult=false`);
+  return (data?.results || []).filter((r) => r.media_type === 'movie' || r.media_type === 'tv');
+}
+
+/** Trending movies+shows this week. Good for a "popular right now" row. */
+export async function trending(window = 'week') {
+  const data = await get(`/trending/all/${window}`);
+  return (data?.results || []).filter((r) => r.media_type === 'movie' || r.media_type === 'tv');
+}
+
+/** Normalize one TMDB result to the shape the client wants. */
+export function normalizeTmdb(result) {
+  const isMovie = result.media_type === 'movie' || (result.title && !result.name);
+  return {
+    tmdbId: result.id,
+    kind: isMovie ? 'movie' : 'tv',
+    title: isMovie ? (result.title || result.original_title) : (result.name || result.original_name),
+    year: (isMovie ? result.release_date : result.first_air_date)?.slice(0, 4) || null,
+    overview: result.overview || '',
+    poster: posterUrl(result.poster_path),
+    backdrop: backdropUrl(result.backdrop_path),
+    rating: result.vote_average || null,
+  };
+}

@@ -15,6 +15,7 @@ import androidx.navigation.navArgument
 import de.moviebox.data.SessionManager
 import de.moviebox.ui.library.HomeTabs
 import de.moviebox.ui.library.MovieDetailScreen
+import de.moviebox.ui.library.SearchScreen
 import de.moviebox.ui.library.ShowDetailScreen
 import de.moviebox.ui.login.LoginScreen
 import de.moviebox.ui.player.PlayerScreen
@@ -45,11 +46,23 @@ class MainActivity : ComponentActivity() {
                                 val t = Uri.encode(title)
                                 navController.navigate("player/$id?title=$t")
                             },
+                            onSearch = { navController.navigate("search") },
                             onLogout = {
                                 SessionManager.clear()
                                 navController.navigate("login") {
                                     popUpTo(0) { inclusive = true }
                                 }
+                            },
+                        )
+                    }
+                    composable("search") {
+                        SearchScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenMovie = { id -> navController.navigate("movie/$id") },
+                            onOpenShow = { id -> navController.navigate("show/$id") },
+                            onPlay = { id, title ->
+                                val t = Uri.encode(title)
+                                navController.navigate("player/$id?title=$t")
                             },
                         )
                     }

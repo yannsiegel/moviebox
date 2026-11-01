@@ -11,6 +11,8 @@ import { tenantFor } from './users.js';
 import { withTenant } from './tenant.js';
 import { scanAll } from './scanner.js';
 import { findMedia, serveMedia } from './stream.js';
+import { receiveUpload } from './uploads.js';
+import { isConfigured as tmdbEnabled, multiSearch, normalizeTmdb, trending } from './tmdb.js';
 
 export const api = express.Router();
 api.use(express.json({ limit: '1mb' }));
@@ -158,6 +160,38 @@ api.get('/episodes/:id', handle(async (req, res) => {
   res.json({ episode: serialize(episode) });
 }));
 
+// Case-insensitive search across the library (movies + shows + episodes).
+api.get('/search', handle(async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 1) return res.json({ movies: [], shows: [], episodes: [] });
+  const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const [movies, shows, episodes] = await Promise.all([
+    db.movies.find({ title: re }).limit(40).toArray(),
+    db.shows.find({ title: re }).limit(20).toArray(),
+    db.episodes.find({ $or: [{ title: re }, { showTitle: re }] }).limit(40).toArray(),
+  ]);
+  res.json({
+    movies: movies.map(listMovie),
+    shows: shows.map(listShow),
+    episodes: episodes.map(listEpisode),
+  });
+}));
+
+// Browse what's available on TMDB (metadata only - no download) so the user can tell what to add.
+api.get('/discover/search', handle(async (req, res) => {
+  if (!tmdbEnabled()) return res.status(400).json({ error: 'Kein TMDB-Key hinterlegt' });
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json({ results: [] });
+  const hits = await multiSearch(q);
+  res.json({ results: hits.map(normalizeTmdb) });
+}));
+
+api.get('/discover/trending', handle(async (_req, res) => {
+  if (!tmdbEnabled()) return res.status(400).json({ error: 'Kein TMDB-Key hinterlegt' });
+  const hits = await trending('week');
+  res.json({ results: hits.slice(0, 20).map(normalizeTmdb) });
+}));
+
 // "Weiter schauen" + "Neu hinzugefügt" for the home screen.
 api.get('/home', handle(async (_req, res) => {
   const [resume, recentMovies, recentEpisodes] = await Promise.all([
@@ -265,6 +299,16 @@ api.post('/admin/scan', requireAdmin, handle(async (_req, res) => {
   // the scan runs across every tenant, so it leaves the current withTenant context behind
   scanAll().catch((err) => console.error(`Manual scan: ${err.message}`));
   res.json({ ok: true });
+}));
+
+// Upload a video straight into the current user's videoDir. The raw request body is the file,
+// the filename comes from the X-Filename header (frontend passes it there).
+// After the file lands, we kick a scan so it shows up in the library in seconds.
+api.post('/upload', handle(async (req, res) => {
+  const result = await receiveUpload(req, req.get('x-filename') || '', { subfolder: req.get('x-subfolder') || '' });
+  // scanner picks it up on its next tick; a nudge keeps it feeling immediate
+  scanAll().catch((err) => console.error(`Post-upload scan: ${err.message}`));
+  res.json({ ok: true, file: result.name, relative: result.relative, sizeBytes: result.sizeBytes });
 }));
 
 // ------------------------------------------------------------------ errors

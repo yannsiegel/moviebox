@@ -12,9 +12,13 @@ Als Vorbild dient [TuneBox](https://github.com/yannsiegel/tunebox) – der Grund
                           └──── liefert Videodateien direkt aus (X-Accel-Redirect)
 ```
 
-## Funktionen (Stufe 2 – aktueller Stand)
+## Funktionen (Stufe 2.1 – aktueller Stand)
 
 - **Ordner-Scanner**: Legt du eine Videodatei nach `/srv/moviebox/media/`, taucht sie innerhalb weniger Minuten in der Bibliothek auf. Umbenennen oder Löschen wirkt genauso.
+- **Upload direkt per Web und App**: Drag & Drop ins browserfenster oder Taste in der oberen Leiste. Die Datei landet im Medienordner, der Scanner holt sie sofort rein.
+- **Suche** über die lokale Bibliothek (Filme, Serien, Folgen) mit Sofort-Ergebnissen.
+- **„Entdecken"-Tab**: TMDB-Suche und wöchentliche Trends als Ideen-Fundus – zeigt was es gibt, auch wenn du's noch nicht hast.
+- **Admin-Bereich** im Web (⚙): Konten anlegen und löschen, Status mit Job-Zahlen, Scan auslösen, Server-Token rotieren.
 - **Automatische Metadaten** von TMDB: Poster, Backdrops, Beschreibungen, Originaltitel, Veröffentlichungsjahr, Genres, Episoden-Titel und -Bilder. Ohne TMDB-Key funktioniert die Bibliothek weiter – nur mit Datei-Namen als Titel.
 - **Serien-Erkennung** aus Dateinamen: `S01E02`, `1x02`, Ordnerstruktur `Serie/Season 1/02 - Titel.mkv`.
 - **Direct-Play** über HTML5 `<video>` bzw. ExoPlayer: der Server reicht die Datei durch, keine Umkodierung nötig solange der Client das Format kann (fast immer bei MP4/MKV/H.264/H.265).
@@ -22,7 +26,7 @@ Als Vorbild dient [TuneBox](https://github.com/yannsiegel/tunebox) – der Grund
 - **„Weiter schauen"** und **„Neu hinzugefügt"** auf der Startseite.
 - **Untertitel-Sidecars** (`.srt`, `.ass`, `.vtt` neben der Videodatei) werden erkannt und mitgeliefert.
 - **Mehrere Konten** auf einem Server, Admin-Bereich, Einladungslinks, tägliche Backups.
-- **Android-App** (Kotlin + Compose + Media3, APK als GitHub-Release) mit Login, Bibliothek, Detailansicht, Player.
+- **Android-App** (Kotlin + Compose + Media3, APK als GitHub-Release) mit Login, Bibliothek, Detailansicht, Player, Suche und Entdecken-Tab.
 - **Web-Player** im Browser mit Grid, Detail, Full-Screen-Video.
 
 ## Ausbaustufen

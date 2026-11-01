@@ -9,6 +9,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
 /**
@@ -68,6 +69,10 @@ interface MovieBoxService {
 
     @GET("media/{id}/resume") suspend fun getResume(@Path("id") id: String): ResumePosition
     @POST("media/{id}/resume") suspend fun postResume(@Path("id") id: String, @Body body: ResumeUpdate): Map<String, Boolean>
+
+    @GET("search") suspend fun searchLibrary(@Query("q") q: String): SearchResponse
+    @GET("discover/search") suspend fun discoverSearch(@Query("q") q: String): DiscoverResponse
+    @GET("discover/trending") suspend fun discoverTrending(): DiscoverResponse
 
     @POST("admin/scan") suspend fun adminScan(): Map<String, Boolean>
 }

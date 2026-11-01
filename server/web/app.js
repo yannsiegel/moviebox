@@ -1,5 +1,6 @@
-// MovieBox web player — plain JS, no framework, no build step.
-// State lives in a few top-level objects; views are rebuilt on navigation.
+// MovieBox web player. Plain JS, no framework, no build step.
+// Views: home, movies, shows, discover (TMDB browse), search, movie/show detail, player.
+// Overlays: upload (drag&drop + file picker), admin (users + status), modal, toast.
 
 (() => {
   const $ = (sel) => document.querySelector(sel);
@@ -8,33 +9,45 @@
     for (const [k, v] of Object.entries(attrs)) {
       if (k === 'class') node.className = v;
       else if (k === 'onClick') node.addEventListener('click', v);
+      else if (k === 'onInput') node.addEventListener('input', v);
       else if (k === 'html') node.innerHTML = v;
       else if (v !== null && v !== undefined) node.setAttribute(k, v);
     }
-    for (const c of [].concat(children)) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    for (const c of [].concat(children)) if (c !== null && c !== undefined) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
     return node;
   };
 
   const State = {
     token: sessionStorage.getItem('mb_token') || '',
     view: 'home',
+    isAdmin: false,
   };
 
   async function api(path, options = {}) {
     const headers = { ...(options.headers || {}) };
     if (State.token) headers.Authorization = 'Bearer ' + State.token;
-    if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
+    if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData) && !(options.body instanceof Blob) && !(options.body instanceof ArrayBuffer)) {
       headers['Content-Type'] = 'application/json';
       options.body = JSON.stringify(options.body);
     }
     const r = await fetch('/api' + path, { ...options, headers });
     if (r.status === 401) { State.token = ''; sessionStorage.removeItem('mb_token'); renderLogin(); throw new Error('Nicht angemeldet'); }
-    const data = await r.json().catch(() => ({}));
+    const ct = r.headers.get('content-type') || '';
+    const data = ct.includes('application/json') ? await r.json().catch(() => ({})) : {};
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
     return data;
   }
 
   function streamUrl(id) { return `/api/media/${id}/stream?token=${encodeURIComponent(State.token)}`; }
+
+  function toast(message, kind = 'ok', ms = 3000) {
+    const t = $('#toast');
+    t.className = kind;
+    t.textContent = message;
+    t.hidden = false;
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { t.hidden = true; }, ms);
+  }
 
   // ---------- login ----------
   function renderLogin() {
@@ -47,6 +60,7 @@
       try {
         const data = await api('/login', { method: 'POST', body: { username: $('#u').value, password: $('#p').value, device: 'Web-Player' } });
         State.token = data.token;
+        State.isAdmin = data.user.role === 'admin';
         sessionStorage.setItem('mb_token', State.token);
         openApp();
       } catch (err) {
@@ -55,10 +69,15 @@
     };
   }
 
-  function openApp() {
+  async function openApp() {
     $('#login').hidden = true;
     $('#topbar').hidden = false;
     $('#view').hidden = false;
+    try {
+      const me = await api('/me');
+      State.isAdmin = me.user.role === 'admin';
+    } catch { /* token stale, renderLogin already handled by api() */ return; }
+    $('#admin-btn').style.display = State.isAdmin ? '' : 'none';
     nav('home');
   }
 
@@ -68,11 +87,13 @@
     for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t.dataset.view === view);
     const container = $('#view');
     container.innerHTML = '';
-    container.appendChild(el('div', { class: 'loading empty' }, 'Laden …'));
+    container.appendChild(el('div', { class: 'empty' }, 'Laden …'));
     try {
       if (view === 'home') await renderHome(container);
       else if (view === 'movies') await renderMovies(container);
       else if (view === 'shows') await renderShows(container);
+      else if (view === 'discover') await renderDiscover(container);
+      else if (view === 'search') await renderSearch(container, arg);
       else if (view === 'movie') await renderMovieDetail(container, arg);
       else if (view === 'show') await renderShowDetail(container, arg);
     } catch (err) {
@@ -81,7 +102,7 @@
     }
   }
 
-  // ---------- home ----------
+  // ---------- cards ----------
   function cardMovie(m) {
     const card = el('button', { class: 'card', onClick: () => nav('movie', m.id) });
     const poster = el('div', { class: 'poster' });
@@ -112,10 +133,53 @@
     }
     return card;
   }
+  function cardShow(s) {
+    const card = el('button', { class: 'card', onClick: () => nav('show', s.id) });
+    const poster = el('div', { class: 'poster' });
+    if (s.poster) poster.appendChild(el('img', { src: s.poster, loading: 'lazy', alt: s.title }));
+    else poster.appendChild(el('div', { class: 'fallback' }, s.title));
+    card.appendChild(poster);
+    card.appendChild(el('div', { class: 'title' }, s.title));
+    if (s.year) card.appendChild(el('div', { class: 'sub' }, String(s.year)));
+    return card;
+  }
+  function cardDiscover(r) {
+    const card = el('div', { class: 'card disc-card' });
+    const poster = el('div', { class: 'poster' });
+    if (r.poster) poster.appendChild(el('img', { src: r.poster, loading: 'lazy', alt: r.title }));
+    else poster.appendChild(el('div', { class: 'fallback' }, r.title));
+    poster.appendChild(el('div', { class: 'kind-badge' }, r.kind === 'movie' ? 'Film' : 'Serie'));
+    if (r.rating) poster.appendChild(el('div', { class: 'rating' }, '★ ' + r.rating.toFixed(1)));
+    card.appendChild(poster);
+    card.appendChild(el('div', { class: 'title' }, r.title));
+    const sub = [];
+    if (r.year) sub.push(r.year);
+    card.appendChild(el('div', { class: 'sub' }, sub.join(' · ')));
+    return card;
+  }
 
+  // ---------- empty state ----------
+  function emptyLibrary(parentContainer) {
+    const empty = el('div', { class: 'empty' });
+    empty.appendChild(el('h3', {}, 'Noch keine Inhalte'));
+    empty.appendChild(el('p', {}, 'Lade Videos per Drag&Drop in dieses Fenster, über die Upload-Taste oben, oder lege sie direkt in /srv/moviebox/media/.'));
+    empty.appendChild(el('p', {}, 'Dateinamen helfen beim Zuordnen: „Film (Jahr).mkv" oder „Serie/Season 1/Serie.S01E01.mkv".'));
+    const cta = el('div', { class: 'cta' });
+    cta.appendChild(el('button', { onClick: () => $('#file-picker').click() }, 'Datei auswählen'));
+    cta.appendChild(el('button', { class: 'ghost', onClick: () => nav('discover') }, 'Entdecken (TMDB)'));
+    cta.appendChild(el('button', { class: 'ghost', onClick: triggerScan }, 'Jetzt scannen'));
+    empty.appendChild(cta);
+    parentContainer.appendChild(empty);
+  }
+
+  // ---------- home ----------
   async function renderHome(container) {
     const data = await api('/home');
     container.innerHTML = '';
+    if (!data.continue?.length && !data.recentMovies?.length && !data.recentEpisodes?.length) {
+      emptyLibrary(container);
+      return;
+    }
     if (data.continue?.length) {
       container.appendChild(el('h2', {}, 'Weiter schauen'));
       const g = el('div', { class: 'grid' });
@@ -134,16 +198,13 @@
       for (const e of data.recentEpisodes) g.appendChild(cardEpisode(e));
       container.appendChild(g);
     }
-    if (!data.continue?.length && !data.recentMovies?.length && !data.recentEpisodes?.length) {
-      container.appendChild(el('div', { class: 'empty' }, 'Noch keine Inhalte. Lege Videodateien in den Medienordner und drücke oben rechts auf ↻.'));
-    }
   }
 
   async function renderMovies(container) {
     const { movies } = await api('/movies?sort=title');
     container.innerHTML = '';
     container.appendChild(el('h2', {}, `Filme (${movies.length})`));
-    if (!movies.length) { container.appendChild(el('div', { class: 'empty' }, 'Keine Filme gefunden.')); return; }
+    if (!movies.length) { emptyLibrary(container); return; }
     const g = el('div', { class: 'grid' });
     for (const m of movies) g.appendChild(cardMovie(m));
     container.appendChild(g);
@@ -153,19 +214,96 @@
     const { shows } = await api('/shows');
     container.innerHTML = '';
     container.appendChild(el('h2', {}, `Serien (${shows.length})`));
-    if (!shows.length) { container.appendChild(el('div', { class: 'empty' }, 'Keine Serien gefunden.')); return; }
+    if (!shows.length) { emptyLibrary(container); return; }
     const g = el('div', { class: 'grid' });
-    for (const s of shows) {
-      const card = el('button', { class: 'card', onClick: () => nav('show', s.id) });
-      const poster = el('div', { class: 'poster' });
-      if (s.poster) poster.appendChild(el('img', { src: s.poster, loading: 'lazy', alt: s.title }));
-      else poster.appendChild(el('div', { class: 'fallback' }, s.title));
-      card.appendChild(poster);
-      card.appendChild(el('div', { class: 'title' }, s.title));
-      if (s.year) card.appendChild(el('div', { class: 'sub' }, String(s.year)));
-      g.appendChild(card);
-    }
+    for (const s of shows) g.appendChild(cardShow(s));
     container.appendChild(g);
+  }
+
+  async function renderDiscover(container) {
+    container.innerHTML = '';
+    container.appendChild(el('h2', {}, 'Entdecken – was gibt es?'));
+    const info = el('p', { class: 'sub', style: 'color:var(--muted);margin:-8px 0 18px' },
+      'Suche in TMDB nach Titeln, um zu sehen, was es gibt. Herunterladen klappt daraus (noch) nicht – die Datei legst du selbst in den Medienordner, Posters und Beschreibungen holt sich MovieBox dann automatisch.');
+    container.appendChild(info);
+
+    const search = el('input', { type: 'search', placeholder: 'Film oder Serie suchen …', style: 'width:100%;max-width:420px;padding:10px 14px;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:8px;margin-bottom:20px' });
+    container.appendChild(search);
+
+    const results = el('div', { class: 'disc-grid' });
+    container.appendChild(results);
+
+    let timer = null;
+    search.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = search.value.trim();
+      timer = setTimeout(() => doSearch(q), 300);
+    });
+
+    async function doSearch(q) {
+      results.innerHTML = '';
+      if (!q) { showTrending(); return; }
+      try {
+        const data = await api('/discover/search?q=' + encodeURIComponent(q));
+        if (!data.results.length) { results.appendChild(el('div', { class: 'empty' }, 'Keine Treffer auf TMDB.')); return; }
+        for (const r of data.results) results.appendChild(cardDiscover(r));
+      } catch (err) {
+        results.appendChild(el('div', { class: 'empty' }, err.message));
+      }
+    }
+
+    async function showTrending() {
+      try {
+        const data = await api('/discover/trending');
+        if (!data.results.length) return;
+        container.insertBefore(el('h2', {}, 'Aktuell beliebt'), results);
+        for (const r of data.results) results.appendChild(cardDiscover(r));
+      } catch (err) {
+        // TMDB not configured — just leave the search box
+        results.appendChild(el('div', { class: 'empty' }, err.message));
+      }
+    }
+
+    showTrending();
+  }
+
+  async function renderSearch(container, q) {
+    container.innerHTML = '';
+    container.appendChild(el('h2', {}, `Suche: „${q}"`));
+    if (!q || q.length < 1) {
+      container.appendChild(el('div', { class: 'empty' }, 'Gib oben etwas ein, um in deiner Bibliothek zu suchen.'));
+      return;
+    }
+    const data = await api('/search?q=' + encodeURIComponent(q));
+    const total = data.movies.length + data.shows.length + data.episodes.length;
+    if (!total) {
+      const empty = el('div', { class: 'empty' });
+      empty.appendChild(el('h3', {}, 'Nichts gefunden'));
+      empty.appendChild(el('p', {}, 'Nichts in deiner Bibliothek passt. Vielleicht in TMDB suchen?'));
+      const cta = el('div', { class: 'cta' });
+      cta.appendChild(el('button', { onClick: () => nav('discover') }, 'Entdecken (TMDB)'));
+      empty.appendChild(cta);
+      container.appendChild(empty);
+      return;
+    }
+    if (data.movies.length) {
+      container.appendChild(el('h2', {}, `Filme (${data.movies.length})`));
+      const g = el('div', { class: 'grid' });
+      for (const m of data.movies) g.appendChild(cardMovie(m));
+      container.appendChild(g);
+    }
+    if (data.shows.length) {
+      container.appendChild(el('h2', {}, `Serien (${data.shows.length})`));
+      const g = el('div', { class: 'grid' });
+      for (const s of data.shows) g.appendChild(cardShow(s));
+      container.appendChild(g);
+    }
+    if (data.episodes.length) {
+      container.appendChild(el('h2', {}, `Folgen (${data.episodes.length})`));
+      const g = el('div', { class: 'grid' });
+      for (const e of data.episodes) g.appendChild(cardEpisode(e));
+      container.appendChild(g);
+    }
   }
 
   async function renderMovieDetail(container, id) {
@@ -247,6 +385,167 @@
     video.addEventListener('ended', () => { cleanup(); $('#player').hidden = true; });
   }
 
+  // ---------- upload ----------
+  async function uploadFile(file) {
+    toast(`Hochladen: ${file.name} …`, 'ok', 8000);
+    const t = $('#toast');
+    const progress = el('div', { class: 'progress' });
+    const bar = el('div', { style: 'width:0%' });
+    progress.appendChild(bar);
+    t.appendChild(progress);
+
+    try {
+      // use XHR for progress — fetch streams uploads don't widely work yet
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + State.token);
+        xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) bar.style.width = ((ev.loaded / ev.total) * 100).toFixed(1) + '%';
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve();
+          else { try { reject(new Error(JSON.parse(xhr.responseText).error || `HTTP ${xhr.status}`)); } catch { reject(new Error(`HTTP ${xhr.status}`)); } }
+        };
+        xhr.onerror = () => reject(new Error('Netzwerkfehler'));
+        xhr.send(file);
+      });
+      toast(`✓ ${file.name} hochgeladen – Scan läuft`, 'ok', 4000);
+      // give the metadata worker a moment
+      setTimeout(() => { if (State.view === 'home' || State.view === 'movies' || State.view === 'shows') nav(State.view); }, 2500);
+    } catch (err) {
+      toast(`✘ ${file.name}: ${err.message}`, 'err', 6000);
+    }
+  }
+
+  async function uploadFiles(files) {
+    for (const f of files) {
+      // sequential: one at a time keeps the server CPU/IO sane for big files
+      await uploadFile(f);
+    }
+  }
+
+  // drag & drop whole-window
+  let dragDepth = 0;
+  window.addEventListener('dragenter', (e) => {
+    if (!State.token) return;
+    if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+    dragDepth++;
+    $('#drop-overlay').hidden = false;
+  });
+  window.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) $('#drop-overlay').hidden = true;
+  });
+  window.addEventListener('dragover', (e) => { if (State.token) e.preventDefault(); });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    $('#drop-overlay').hidden = true;
+    if (!State.token) return;
+    const files = [...(e.dataTransfer?.files || [])];
+    if (files.length) uploadFiles(files);
+  });
+
+  $('#file-picker').addEventListener('change', (e) => {
+    const files = [...e.target.files];
+    if (files.length) uploadFiles(files);
+    e.target.value = '';
+  });
+
+  // ---------- modal: admin, settings ----------
+  function openModal(renderer) {
+    const body = $('#modal .modal-body');
+    body.innerHTML = '';
+    $('#modal').hidden = false;
+    renderer(body).catch((err) => { body.innerHTML = ''; body.appendChild(el('div', { class: 'empty' }, 'Fehler: ' + err.message)); });
+  }
+  $('#modal .modal-close').addEventListener('click', () => { $('#modal').hidden = true; });
+  $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') $('#modal').hidden = true; });
+
+  async function openAdmin() {
+    openModal(async (body) => {
+      body.appendChild(el('h2', {}, 'Admin'));
+
+      // ---- Status
+      body.appendChild(el('h3', { style: 'margin-top:0;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px' }, 'Status'));
+      const status = await api('/admin/status');
+      const stats = el('div', { class: 'stats' });
+      const summary = await api('/library/summary');
+      stats.appendChild(statTile('Filme', summary.movies));
+      stats.appendChild(statTile('Serien', summary.shows));
+      stats.appendChild(statTile('Folgen', summary.episodes));
+      stats.appendChild(statTile('RAM', status.memoryMb + ' MB'));
+      stats.appendChild(statTile('Uptime', formatDuration(status.uptimeSeconds)));
+      stats.appendChild(statTile('Version', status.version));
+      for (const [k, v] of Object.entries(status.jobs || {})) stats.appendChild(statTile(`Jobs: ${k}`, v));
+      body.appendChild(stats);
+
+      const scanBtn = el('button', { class: 'primary', style: 'margin-top:14px', onClick: async () => {
+        try { await api('/admin/scan', { method: 'POST' }); toast('Scan gestartet', 'ok'); } catch (e) { toast(e.message, 'err'); }
+      } }, 'Jetzt scannen');
+      body.appendChild(scanBtn);
+
+      // ---- Users
+      body.appendChild(el('h3', { style: 'margin-top:24px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px' }, 'Konten'));
+      const users = (await api('/admin/users')).users;
+      for (const u of users) {
+        const row = el('div', { class: 'row' });
+        row.appendChild(el('div', { class: 'name' }, [u.displayName, el('div', { style: 'color:var(--muted);font-size:12px' }, u.username)]));
+        row.appendChild(el('span', { class: 'badge' }, u.role));
+        if (u.role !== 'admin') {
+          row.appendChild(el('button', { class: 'danger', onClick: async () => {
+            if (!confirm(`Konto ${u.username} wirklich löschen? (inkl. Bibliothek)`)) return;
+            try { await api('/admin/users/' + u.id, { method: 'DELETE' }); toast('Konto gelöscht'); openAdmin(); }
+            catch (err) { toast(err.message, 'err'); }
+          } }, 'Löschen'));
+        }
+        body.appendChild(row);
+      }
+      // create new
+      const form = el('div', { class: 'form-row' });
+      const nameIn = el('input', { placeholder: 'Benutzername' });
+      const pwIn = el('input', { placeholder: 'Passwort (mind. 8)', type: 'password' });
+      form.appendChild(nameIn);
+      form.appendChild(pwIn);
+      form.appendChild(el('button', { class: 'primary', onClick: async () => {
+        try {
+          await api('/admin/users', { method: 'POST', body: { username: nameIn.value, password: pwIn.value } });
+          toast('Konto angelegt');
+          openAdmin();
+        } catch (err) { toast(err.message, 'err'); }
+      } }, 'Anlegen'));
+      body.appendChild(form);
+
+      // ---- Server token
+      body.appendChild(el('h3', { style: 'margin-top:24px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px' }, 'Server-Token'));
+      body.appendChild(el('p', { style: 'color:var(--muted);font-size:13px;margin:0 0 10px' }, 'Löst den API_TOKEN in der .env durch einen neuen ab. Alte Clients mit nur diesem Token müssen neu konfiguriert werden.'));
+      body.appendChild(el('button', { class: 'danger', onClick: async () => {
+        if (!confirm('Server-Token rotieren? Alles, was den alten Token nutzt, muss neu eingerichtet werden.')) return;
+        try {
+          const r = await api('/admin/server-token/rotate', { method: 'POST' });
+          prompt('Neuer API_TOKEN (bitte sofort speichern):', r.token);
+        } catch (err) { toast(err.message, 'err'); }
+      } }, 'Token neu generieren'));
+    });
+  }
+
+  function statTile(key, value) {
+    const t = el('div', { class: 'stat' });
+    t.appendChild(el('div', { class: 'k' }, key));
+    t.appendChild(el('div', { class: 'v' }, String(value)));
+    return t;
+  }
+
+  function formatDuration(sec) {
+    if (sec < 60) return sec + ' s';
+    if (sec < 3600) return Math.round(sec / 60) + ' min';
+    if (sec < 86400) return Math.round(sec / 3600) + ' h';
+    return Math.round(sec / 86400) + ' d';
+  }
+
   function formatTime(sec) {
     sec = Math.round(sec);
     const h = Math.floor(sec / 3600);
@@ -255,15 +554,31 @@
     return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
   }
 
+  async function triggerScan() {
+    try { await api('/admin/scan', { method: 'POST' }); toast('Scan gestartet', 'ok'); setTimeout(() => nav(State.view), 2500); }
+    catch (err) { toast(err.message, 'err'); }
+  }
+
   // ---------- wire-up ----------
   document.addEventListener('click', (e) => {
     const tab = e.target.closest('[data-view]');
     if (tab) nav(tab.dataset.view);
   });
-  $('#scan-btn').addEventListener('click', async () => {
-    try { await api('/admin/scan', { method: 'POST' }); setTimeout(() => nav(State.view), 2000); }
-    catch (err) { alert(err.message); }
+
+  $('#search-input').addEventListener('input', (e) => {
+    const q = e.target.value.trim();
+    clearTimeout($('#search-input')._timer);
+    $('#search-input')._timer = setTimeout(() => {
+      if (q) nav('search', q);
+    }, 300);
   });
+  $('#search-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.target.value = ''; nav('home'); }
+  });
+
+  $('#upload-btn').addEventListener('click', () => $('#file-picker').click());
+  $('#scan-btn').addEventListener('click', triggerScan);
+  $('#admin-btn').addEventListener('click', openAdmin);
   $('#logout-btn').addEventListener('click', async () => {
     try { await api('/logout', { method: 'POST' }); } catch { /* ignore */ }
     State.token = ''; sessionStorage.removeItem('mb_token'); renderLogin();
