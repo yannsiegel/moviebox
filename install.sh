@@ -45,6 +45,7 @@ if [[ -f "$ENV_FILE" ]]; then
   PORT="$(env_value PORT)"
   MONGO_URL="$(env_value MONGO_URL)"
   DOMAIN="$(env_value MOVIEBOX_DOMAIN)"
+  TMDB_API_KEY="$(env_value TMDB_API_KEY)"
   FIRST_INSTALL=false
 else
   FIRST_INSTALL=true
@@ -58,6 +59,8 @@ else
     EMAIL="$(ask "E-Mail für das kostenlose HTTPS-Zertifikat (Let's Encrypt, optional) []:" "")"
   fi
   MONGO_URL="$(ask "MongoDB-Adresse [mongodb://127.0.0.1:27017]:" "mongodb://127.0.0.1:27017")"
+  echo "TMDB-API-Schlüssel (kostenlos auf themoviedb.org; leer lassen = ohne Metadaten starten)"
+  TMDB_API_KEY="$(ask "TMDB-Key []:" "")"
   API_TOKEN="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
   PORT=3200
@@ -108,6 +111,9 @@ MAX_TRANSCODE_HEIGHT=1080
 TRANSCODE_CONCURRENCY=1
 ACCEL_REDIRECT_PREFIX=/_moviebox_media
 MOVIEBOX_DOMAIN=$DOMAIN
+TMDB_API_KEY=$TMDB_API_KEY
+TMDB_LANGUAGE=de-DE
+SCAN_INTERVAL_SECONDS=300
 EOF
   ok "Konfiguration angelegt ($ENV_FILE)"
 fi
@@ -256,6 +262,16 @@ else
   URL="http://$(hostname -I | awk '{print $1}'):$NGINX_NO_DOMAIN_PORT"
 fi
 echo "   MovieBox läuft unter: ${bold}$URL${reset}"
-echo "   Admin-Token (Web-Player & API):  ${bold}$API_TOKEN${reset}"
+echo "   Medienordner (Videos hier ablegen): ${bold}$MEDIA_DIR${reset}"
+echo "   Admin-Token (API):  ${bold}$API_TOKEN${reset}"
 echo "   Logs:  sudo journalctl -u moviebox -f"
 echo "   Dienst neu starten:  sudo systemctl restart moviebox"
+echo
+echo "   Nächster Schritt:"
+echo "     1) Videodateien nach $MEDIA_DIR/ kopieren (Filme flach, Serien als Show/Season N/Datei.mkv)."
+echo "     2) In der Web-Oberfläche oder App oben rechts ↻ drücken, oder:"
+echo "        curl -X POST $URL/api/admin/scan -H 'Authorization: Bearer $API_TOKEN'"
+echo "     3) Für Metadaten (Poster, Beschreibungen) einen kostenlosen TMDB-Key auf themoviedb.org holen"
+if [[ -z "${TMDB_API_KEY:-}" ]]; then
+  echo "        und in $ENV_FILE als TMDB_API_KEY= eintragen, dann: sudo systemctl restart moviebox"
+fi

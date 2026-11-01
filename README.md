@@ -8,71 +8,54 @@ Als Vorbild dient [TuneBox](https://github.com/yannsiegel/tunebox) – der Grund
  Android-App ──HTTPS──▶ nginx ──▶ Node.js (Port 3200) ──▶ MongoDB
  Web-Player  ──┘
  (Compose + Media3)       │              │
-                          │              └─▶ ffmpeg + yt-dlp ──▶ /srv/moviebox/media
+                          │              └─▶ ffmpeg + TMDB ──▶ /srv/moviebox/media
                           └──── liefert Videodateien direkt aus (X-Accel-Redirect)
 ```
 
-> ⚠️ **Status:** Diese erste Version enthält nur das Grundgerüst (Server, Konten, Anmeldung, Backups, Installation). Bibliothek, Metadaten-Abgleich, Player und Android-App kommen in den nächsten Ausbaustufen.
+## Funktionen (Stufe 2 – aktueller Stand)
+
+- **Ordner-Scanner**: Legt du eine Videodatei nach `/srv/moviebox/media/`, taucht sie innerhalb weniger Minuten in der Bibliothek auf. Umbenennen oder Löschen wirkt genauso.
+- **Automatische Metadaten** von TMDB: Poster, Backdrops, Beschreibungen, Originaltitel, Veröffentlichungsjahr, Genres, Episoden-Titel und -Bilder. Ohne TMDB-Key funktioniert die Bibliothek weiter – nur mit Datei-Namen als Titel.
+- **Serien-Erkennung** aus Dateinamen: `S01E02`, `1x02`, Ordnerstruktur `Serie/Season 1/02 - Titel.mkv`.
+- **Direct-Play** über HTML5 `<video>` bzw. ExoPlayer: der Server reicht die Datei durch, keine Umkodierung nötig solange der Client das Format kann (fast immer bei MP4/MKV/H.264/H.265).
+- **Fortsetzen-Position** wird alle 10 Sekunden synchron zwischen Web und App gehalten.
+- **„Weiter schauen"** und **„Neu hinzugefügt"** auf der Startseite.
+- **Untertitel-Sidecars** (`.srt`, `.ass`, `.vtt` neben der Videodatei) werden erkannt und mitgeliefert.
+- **Mehrere Konten** auf einem Server, Admin-Bereich, Einladungslinks, tägliche Backups.
+- **Android-App** (Kotlin + Compose + Media3, APK als GitHub-Release) mit Login, Bibliothek, Detailansicht, Player.
+- **Web-Player** im Browser mit Grid, Detail, Full-Screen-Video.
 
 ## Ausbaustufen
 
-- **Stufe 1 – Grundgerüst (dieser Commit):** Server mit Konten, Tokens, Einladungen, Backups, nginx + HTTPS, systemd, Install-Skript, minimaler Web-Login.
-- **Stufe 2 – Bibliothek:** Ordner-Scanner (lokale Dateien), ffprobe-Metadaten, TMDB-Matching, einfacher Web-Player mit Direct-Play, erste Android-App.
-- **Stufe 3 – Komfort:** Untertitel, Fortsetzen-Position, nächste Folge, Thumbnail-Vorschau beim Seeken.
-- **Stufe 4 – Transcoding + Fernzugriff:** ffmpeg-Transcoding (CPU, 1080p-Ceiling), HLS, Bandbreiten-Stufen, Fernzugriff über nginx + HTTPS.
-- **Stufe 5 – Automatische Quellen:** yt-dlp-Downloads, Serien-Abos.
-- **Stufe 6 – Analyse + Entdecken:** Lautheits-Angleichung, Intro-Skip, Empfehlungen, Jahresrückblick.
-- **Stufe 7 – Offline + Chromecast:** Downloads in der Android-App, Chromecast-Sender.
+- ✅ **Stufe 1 – Grundgerüst:** Server, Konten, Tokens, Einladungen, Backups, Installation.
+- ✅ **Stufe 2 – Bibliothek (hier):** Scanner, ffprobe, TMDB-Matching, Serien-/Film-Endpoints, Fortsetzen, Untertitel-Sidecars, echter Web-Player, Android-App-Skelett, GitHub-Workflow für APK.
+- **Stufe 3 – Transcoding + Komfort:** CPU-Transcoding mit ffmpeg (1080p-Ceiling, HLS), Thumbnail-Sprite-Sheets für Seek-Vorschau, Hardware-Untertitel.
+- **Stufe 4 – Automatische Quellen:** yt-dlp-Integration (wie TuneBox), Serien-Abos.
+- **Stufe 5 – Analyse + Entdecken:** Intro-Skip, Lautheits-Angleichung, Empfehlungen, Jahresrückblick.
+- **Stufe 6 – Offline + Chromecast:** Downloads in der Android-App (Media3-Download-Cache), Chromecast-Sender.
 
 ## Techstack
 
-- **Server:** Node.js ≥ 20.6 (ESM, `--env-file`), Express, offizieller MongoDB-Treiber. Externe Programme: `ffmpeg`/`ffprobe` (Metadaten, Lautheit, Thumbnails, Transcoding), `yt-dlp` (ab Stufe 5).
+- **Server:** Node.js ≥ 20.6 (ESM, `--env-file`), Express, offizieller MongoDB-Treiber. Externe Programme: `ffmpeg`/`ffprobe`. Nur zwei npm-Deps.
 - **Betrieb:** systemd-Dienst, nginx als Reverse Proxy mit X-Accel-Redirect für Videodateien, certbot für HTTPS. Tägliche Backups der Datenbank pro Konto.
-- **Android-App (ab Stufe 2):** Kotlin, Jetpack Compose (Material 3), Media3 (ExoPlayer + MediaSessionService).
+- **Android-App:** Kotlin, Jetpack Compose (Material 3), Media3 (ExoPlayer + MediaSessionService). Retrofit + kotlinx.serialization + Coil.
 - **Web-Player:** HTML/CSS/JS ohne Framework und ohne Build-Schritt, mit strikter Content-Security-Policy.
-
-## Server-Architektur (bereits portiert)
-
-- `config` – alle Einstellungen aus `.env`.
-- `db` + `tenant` – pro Konto eigene Collections (Präfix) in einer Datenbank; zentrale Collections für Konten, Tokens, Einladungen. Jede Anfrage läuft per `AsyncLocalStorage` im Kontext des Kontos.
-- `users` – Rollen (admin/user), Passwörter (scrypt), Geräte-Tokens (nur gehasht gespeichert), einmalige Einladungslinks.
-- `routes` – REST-API unter `/api`, Bearer-Token, `requireAdmin` für Admin-Routen, deutsche Fehlermeldungen.
-- `maintenance` – tägliche Backups der Nutzer-Collections.
-- `failures` – Fehler-Gruppen für Downloads/Scans (wird in Stufe 2+ befüllt).
 
 ## Installation
 
-Dauer: etwa 10 Minuten.
+Siehe **[ANLEITUNG.md](ANLEITUNG.md)** für die Schritt-für-Schritt-Installation inkl. Updates, erste Mediendateien einlegen, TMDB-Key einrichten und App installieren.
 
-### Was du brauchst
-
-- einen Ubuntu-Server mit Node.js (ab 20.6), MongoDB und nginx
-- **empfohlen:** eine (Sub-)Domain wie `movies.deine-domain.de`, deren DNS-Eintrag auf die IP des Servers zeigt. Dann richtet das Installationsskript automatisch kostenloses HTTPS ein. Ohne Domain läuft MovieBox über `http://<Server-IP>:8096`.
-
-### Dateien auf den Server bringen
+Kurz:
 
 ```sh
-git clone https://github.com/yannsiegel/moviebox.git
-cd moviebox
-sudo ./install.sh
+cd /root && git clone https://github.com/yannsiegel/moviebox.git
+cd moviebox && sudo bash install.sh
 ```
 
-Das Skript fragt beim ersten Mal nach Domain, E-Mail (für HTTPS) und MongoDB-Adresse, legt einen Dienst-Benutzer `moviebox` an, kopiert den Server-Code nach `/opt/moviebox`, legt die Mediendaten unter `/srv/moviebox/media` ab und startet den systemd-Dienst `moviebox`.
-
-### Danach
-
-Das Admin-Token (für die API und den Web-Player) wird am Ende der Installation einmal ausgegeben. Weitere Konten legst du nach der Anmeldung über die Admin-Endpunkte an.
-
-### Update
+Beim Update (bei vorhandener Installation):
 
 ```sh
-cd moviebox
-git pull
-sudo ./install.sh
+cd /root/moviebox && git pull && NODE_BIN=/opt/node-v26.13.0/bin/node bash install.sh
 ```
 
-Das Skript erkennt die bestehende Installation an der vorhandenen `.env`, übernimmt alle Einstellungen und startet nur den Dienst neu.
-
-## Lizenz & Hinweise
-
-Privatprojekt, Nutzung auf eigene Verantwortung. Für die rechtlichen Rahmenbedingungen gilt dasselbe wie bei TuneBox: Das System ist dafür gedacht, deine eigenen Mediendateien oder frei verfügbare Inhalte zu streamen.
+Die Android-APK wird nach jedem Push nach `app/` automatisch durch GitHub Actions gebaut und als Release unter https://github.com/yannsiegel/moviebox/releases veröffentlicht.

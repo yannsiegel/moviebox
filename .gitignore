@@ -5,3 +5,13 @@ node_modules/
 .DS_Store
 /server/media/
 /server/backups/
+
+# Android / Gradle
+app/.gradle/
+app/build/
+app/app/build/
+app/local.properties
+.idea/
+*.iml
+captures/
+.cxx/

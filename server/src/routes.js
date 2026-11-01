@@ -1,11 +1,16 @@
-// REST API under /api. First-stage scope: auth, accounts, invites, server status.
-// Library endpoints (movies, shows, episodes, playback) are added in the next stage once the
-// scanner and metadata worker land.
+// REST API under /api.
+//
+// Stage 1: auth, accounts, invites, server status.
+// Stage 2 (this file): library (movies, shows, episodes), streaming, resume positions, "Weiter schauen",
+// a manual "scan now" and job status for the admin.
 
 import express from 'express';
+import { db, serialize, toObjectId } from './db.js';
 import { AuthError, acceptInvite, createInvite, createUser, deleteUser, listUsers, login, logout, publicUser, rotateServerToken, setPassword, updateProfile, userForToken } from './users.js';
 import { tenantFor } from './users.js';
 import { withTenant } from './tenant.js';
+import { scanAll } from './scanner.js';
+import { findMedia, serveMedia } from './stream.js';
 
 export const api = express.Router();
 api.use(express.json({ limit: '1mb' }));
@@ -20,7 +25,6 @@ function bearerToken(req) {
   const header = req.get('authorization') || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
   if (match) return match[1].trim();
-  // media streaming uses ?token= because <video> can't set headers
   if (typeof req.query?.token === 'string') return req.query.token;
   return null;
 }
@@ -93,6 +97,129 @@ api.post('/me/invite', handle(async (req, res) => {
   res.json({ code });
 }));
 
+// ------------------------------------------------------------------ library
+
+/** Compact movie/episode shape for list views. */
+function listMovie(m) {
+  const s = serialize(m);
+  return { id: s.id, title: s.title, year: s.year, poster: s.poster, runtimeSec: s.runtimeSec, addedAt: s.addedAt, kind: 'movie' };
+}
+function listEpisode(e) {
+  const s = serialize(e);
+  return {
+    id: s.id, showId: String(s.showId), showTitle: s.showTitle, season: s.season, episode: s.episode,
+    title: s.title, still: s.still, runtimeSec: s.runtimeSec, addedAt: s.addedAt, kind: 'episode',
+  };
+}
+function listShow(s) {
+  const d = serialize(s);
+  return { id: d.id, title: d.title, year: d.year, poster: d.poster, overview: d.overview };
+}
+
+api.get('/library/summary', handle(async (_req, res) => {
+  const [movieCount, showCount, episodeCount] = await Promise.all([
+    db.movies.countDocuments(),
+    db.shows.countDocuments(),
+    db.episodes.countDocuments(),
+  ]);
+  res.json({ movies: movieCount, shows: showCount, episodes: episodeCount });
+}));
+
+api.get('/movies', handle(async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  const sort = req.query.sort === 'title' ? { title: 1 } : { addedAt: -1 };
+  const movies = await db.movies.find({}).sort(sort).limit(limit).toArray();
+  res.json({ movies: movies.map(listMovie) });
+}));
+
+api.get('/movies/:id', handle(async (req, res) => {
+  const movie = await db.movies.findOne({ _id: toObjectId(req.params.id) });
+  if (!movie) return res.status(404).json({ error: 'Film nicht gefunden' });
+  res.json({ movie: serialize(movie) });
+}));
+
+api.get('/shows', handle(async (_req, res) => {
+  const shows = await db.shows.find({}).sort({ title: 1 }).toArray();
+  res.json({ shows: shows.map(listShow) });
+}));
+
+api.get('/shows/:id', handle(async (req, res) => {
+  const show = await db.shows.findOne({ _id: toObjectId(req.params.id) });
+  if (!show) return res.status(404).json({ error: 'Serie nicht gefunden' });
+  const episodes = await db.episodes.find({ showId: show._id }).sort({ season: 1, episode: 1 }).toArray();
+  const seasons = {};
+  for (const ep of episodes) (seasons[ep.season] ||= []).push(listEpisode(ep));
+  res.json({ show: serialize(show), seasons });
+}));
+
+api.get('/episodes/:id', handle(async (req, res) => {
+  const episode = await db.episodes.findOne({ _id: toObjectId(req.params.id) });
+  if (!episode) return res.status(404).json({ error: 'Folge nicht gefunden' });
+  res.json({ episode: serialize(episode) });
+}));
+
+// "Weiter schauen" + "Neu hinzugefügt" for the home screen.
+api.get('/home', handle(async (_req, res) => {
+  const [resume, recentMovies, recentEpisodes] = await Promise.all([
+    db.resume.find({ positionSec: { $gt: 15 }, completed: { $ne: true } }).sort({ updatedAt: -1 }).limit(20).toArray(),
+    db.movies.find({}).sort({ addedAt: -1 }).limit(12).toArray(),
+    db.episodes.find({}).sort({ addedAt: -1 }).limit(12).toArray(),
+  ]);
+  // hydrate resume rows into their media items so the client needs one request, not twenty
+  const continueItems = [];
+  for (const r of resume) {
+    const movie = await db.movies.findOne({ _id: r.mediaId });
+    if (movie) { continueItems.push({ ...listMovie(movie), positionSec: r.positionSec }); continue; }
+    const episode = await db.episodes.findOne({ _id: r.mediaId });
+    if (episode) continueItems.push({ ...listEpisode(episode), positionSec: r.positionSec });
+  }
+  res.json({
+    continue: continueItems,
+    recentMovies: recentMovies.map(listMovie),
+    recentEpisodes: recentEpisodes.map(listEpisode),
+  });
+}));
+
+// ------------------------------------------------------------------ playback & resume
+
+api.get('/media/:id/stream', handle(async (req, res) => {
+  const item = await findMedia(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
+  await serveMedia(req, res, item);
+}));
+
+api.get('/media/:id/subtitles/:index', handle(async (req, res) => {
+  const item = await findMedia(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
+  const sub = item.subtitles?.[Number(req.params.index)];
+  if (!sub) return res.status(404).json({ error: 'Untertitel nicht gefunden' });
+  res.sendFile(sub.file);
+}));
+
+api.get('/media/:id/resume', handle(async (req, res) => {
+  const row = await db.resume.findOne({ mediaId: toObjectId(req.params.id) });
+  res.json({ positionSec: row?.positionSec || 0, completed: Boolean(row?.completed) });
+}));
+
+api.post('/media/:id/resume', handle(async (req, res) => {
+  const positionSec = Math.max(0, Number(req.body?.positionSec) || 0);
+  const durationSec = Math.max(0, Number(req.body?.durationSec) || 0);
+  // standard convention: anything past 90 % counts as watched
+  const completed = durationSec > 0 && positionSec >= durationSec * 0.9;
+  await db.resume.updateOne(
+    { mediaId: toObjectId(req.params.id) },
+    {
+      $set: { positionSec, durationSec, completed, updatedAt: new Date() },
+      $setOnInsert: { mediaId: toObjectId(req.params.id), createdAt: new Date() },
+    },
+    { upsert: true },
+  );
+  if (completed) {
+    await db.plays.insertOne({ mediaId: toObjectId(req.params.id), at: new Date(), durationSec });
+  }
+  res.json({ ok: true, completed });
+}));
+
 // ------------------------------------------------------------------ admin
 
 api.get('/admin/users', requireAdmin, handle(async (_req, res) => {
@@ -124,12 +251,20 @@ api.post('/admin/server-token/rotate', requireAdmin, handle(async (_req, res) =>
 }));
 
 api.get('/admin/status', requireAdmin, handle(async (_req, res) => {
+  const jobs = await db.jobs.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]).toArray();
   res.json({
     version: process.env.npm_package_version || 'dev',
     node: process.version,
     uptimeSeconds: Math.round(process.uptime()),
     memoryMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+    jobs: Object.fromEntries(jobs.map((j) => [j._id, j.count])),
   });
+}));
+
+api.post('/admin/scan', requireAdmin, handle(async (_req, res) => {
+  // the scan runs across every tenant, so it leaves the current withTenant context behind
+  scanAll().catch((err) => console.error(`Manual scan: ${err.message}`));
+  res.json({ ok: true });
 }));
 
 // ------------------------------------------------------------------ errors

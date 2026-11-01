@@ -1,47 +1,166 @@
 # MovieBox – Anleitung
 
-Diese Anleitung wächst mit den Ausbaustufen. In **Stufe 1** gibt es noch keine Bibliothek und keinen Player – nur das Grundgerüst (Server, Konten, Anmeldung).
+Die vollständige Schritt-für-Schritt-Anleitung für den Server und die Android-App.
 
-## Erste Schritte nach der Installation
+## Voraussetzungen
 
-1. **Admin-Token notieren.** Das Installationsskript gibt am Ende das `API_TOKEN` aus. Das ist der erste Admin-Zugang; damit kannst du die API ansprechen und später den Web-Player öffnen.
-2. **Web-Login prüfen.** Öffne die eingerichtete Adresse (z. B. `https://movies.deine-domain.de`). Die Login-Seite ist absichtlich sehr schlicht – sie prüft nur, ob der Server läuft und die Datenbank erreichbar ist. Erfolgsmeldung = alles ok.
-3. **Eigenes Passwort setzen.** Für den Admin ist beim ersten Start noch kein Passwort gesetzt (nur das `API_TOKEN`). Über `POST /api/me/password` kannst du eins vergeben:
+Auf dem Server (Ubuntu/Debian):
+- **Node.js ≥ 20.6** (empfohlen 22 oder 26). Wenn Node unter `/opt/node-...` installiert ist, siehst du den Pfad mit `which node` oder `ls /opt | grep node`.
+- **MongoDB 6+**, erreichbar unter `mongodb://127.0.0.1:27017`.
+- **nginx**.
+- Empfohlen: eine Subdomain (z. B. `movies.deine-domain.de`), deren DNS-A-Record auf die Server-IP zeigt.
 
-   ```sh
-   curl -X POST https://deine-domain.de/api/me/password \
-     -H "Authorization: Bearer $API_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"password":"ein-starkes-passwort"}'
-   ```
+Alles andere – `ffmpeg`, `certbot` – installiert `install.sh` selbst.
 
-4. **Weitere Konten (optional).** `POST /api/admin/users` legt ein zusätzliches Konto an. Du brauchst das nur, wenn außer dir noch jemand MovieBox nutzen soll.
+## 1. Erstinstallation
 
-## API-Endpunkte in dieser Stufe
+```sh
+cd /root
+git clone https://github.com/yannsiegel/moviebox.git
+cd moviebox
+sudo bash install.sh
+```
+
+Falls Node über eine eigene Installation läuft (nvm, `/opt/node-...`), den Pfad angeben:
+
+```sh
+sudo NODE_BIN=/opt/node-v26.13.0/bin/node bash install.sh
+```
+
+Das Skript fragt beim ersten Mal nach:
+
+1. **Domain** – z. B. `movies.deine-domain.de`. Leer lassen = nur unter `http://<IP>:8096` erreichbar.
+2. **E-Mail** – nur wenn Domain angegeben, für das kostenlose Let's-Encrypt-Zertifikat.
+3. **MongoDB-URL** – Enter übernimmt den lokalen Standard.
+4. **TMDB-API-Schlüssel** – kostenlos auf [themoviedb.org](https://www.themoviedb.org/settings/api). Darf leer bleiben; die Bibliothek funktioniert dann mit Dateinamen als Titel, lässt sich später nachrüsten.
+
+Danach legt das Skript den Dienst-Benutzer `moviebox` an, kopiert den Server-Code nach `/opt/moviebox/`, legt den Medienordner `/srv/moviebox/media/` an, installiert den systemd-Dienst, richtet nginx + HTTPS ein und startet alles.
+
+Am Ende der Installation werden ausgegeben:
+- die **URL** (z. B. `https://movies.deine-domain.de`)
+- der **Admin-Token** (`API_TOKEN`): das ist der erste Zugang. Weiterverwenden, bis du ein Passwort gesetzt hast.
+- die wichtigsten Pfade.
+
+## 2. Erste Mediendateien
+
+Lege Videodateien in `/srv/moviebox/media/`. Zwei Konventionen:
+
+**Filme** – flach oder in Unterordnern, Jahr im Dateinamen hilft TMDB beim Zuordnen:
+```
+/srv/moviebox/media/
+├── The Matrix (1999).mkv
+├── Inception.2010.1080p.mkv
+└── Dokus/
+    └── Our Planet (2019).mkv
+```
+
+**Serien** – als Ordner, mit `S01E02`-Markern oder `Season N/02 - Titel.mkv`-Schema:
+```
+/srv/moviebox/media/
+└── Breaking Bad/
+    ├── Season 1/
+    │   ├── Breaking.Bad.S01E01.mkv
+    │   └── Breaking.Bad.S01E02.mkv
+    └── Season 2/
+        └── 03 - Bit by a Dead Bee.mkv
+```
+
+**Untertitel** – als Sidecar neben der Videodatei, Sprache als Suffix:
+```
+The Matrix (1999).mkv
+The Matrix (1999).de.srt
+The Matrix (1999).en.srt
+```
+
+Der Scanner läuft alle 5 Minuten automatisch. Sofortigen Scan auslösen:
+- in der Web-Oberfläche: oben rechts auf das ↻-Symbol
+- per API: `curl -X POST https://movies.deine-domain.de/api/admin/scan -H "Authorization: Bearer DEIN_API_TOKEN"`
+
+Nach dem Scan läuft im Hintergrund der Metadaten-Worker: ein Job pro Datei, ffprobe liest die Datei, TMDB wird gefragt, die Bibliothek wird gefüllt. Bei vielen Dateien kann das ein paar Minuten dauern. Status:
+- `curl https://movies.deine-domain.de/api/admin/status -H "Authorization: Bearer DEIN_API_TOKEN"` zeigt die Job-Zahlen.
+
+## 3. Passwort setzen
+
+Über das Admin-Token:
+
+```sh
+curl -X POST https://movies.deine-domain.de/api/me/password \
+  -H "Authorization: Bearer DEIN_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"password":"ein-starkes-passwort"}'
+```
+
+Danach kannst du dich in Web und App mit Benutzername `admin` und diesem Passwort anmelden.
+
+## 4. Android-App installieren
+
+Die APK wird nach jedem Push nach `app/` automatisch von GitHub Actions gebaut und als Release unter https://github.com/yannsiegel/moviebox/releases veröffentlicht.
+
+1. Auf dem Handy die neueste Version öffnen: https://github.com/yannsiegel/moviebox/releases/latest
+2. `MovieBox.apk` herunterladen und öffnen. Android fragt beim ersten Mal nach der Erlaubnis, Apps aus unbekannter Quelle zu installieren – zulassen.
+3. In der App: Server-Adresse (z. B. `https://movies.deine-domain.de`), Benutzername `admin`, Passwort. Fertig.
+
+## 5. Update
+
+```sh
+cd /root/moviebox && git pull && NODE_BIN=/opt/node-v26.13.0/bin/node bash install.sh
+```
+
+Das Skript erkennt die bestehende Installation an der vorhandenen `.env`, übernimmt alle Einstellungen (Domain, API_TOKEN, TMDB-Key, …) und startet nur den Dienst neu. Nichts geht verloren.
+
+## 6. Problemlösung
+
+**Der Dienst startet nicht**
+```sh
+sudo journalctl -u moviebox -n 50 --no-pager
+```
+Häufigste Ursache: MongoDB nicht erreichbar. Prüfen: `sudo systemctl status mongod`.
+
+**„Noch keine Inhalte" trotz Dateien im Medienordner**
+- Scan manuell auslösen (siehe oben).
+- Prüfen, ob der Dienst-Benutzer `moviebox` den Ordner lesen kann: `ls -la /srv/moviebox/media/`. Die Dateien sollten für andere lesbar sein (`chmod -R a+rX /srv/moviebox/media`).
+- Dateiendung muss eine der folgenden sein: `.mkv .mp4 .m4v .mov .avi .ts .m2ts .webm .wmv .flv .mpg .mpeg`.
+
+**Film heißt „Breaking Bad S01E05 720p HDTV x264"**
+- Du hast noch keinen TMDB-Key eingetragen. Im `.env` nachtragen: `sudo nano /opt/moviebox/server/.env` → `TMDB_API_KEY=…`, speichern, dann `sudo systemctl restart moviebox` und erneut scannen.
+- Wenn ein TMDB-Key da ist aber trotzdem keine Treffer kommen: der Dateiname ist für TMDB zu kryptisch oder die Serie heißt dort anders. Umbenennen hilft; manuelles Zuordnen bauen wir in einer späteren Stufe ein.
+
+**Video spielt nicht ab, Fehler „Codec nicht unterstützt"**
+- Direct-Play funktioniert bei H.264 + AAC in MP4/MKV in praktisch jedem Browser und auf Android. Bei H.265/HEVC, Dolby Atmos oder exotischen Containern braucht es Transcoding – das kommt in Stufe 3.
+
+**nginx 502**
+- Node-Dienst ist nicht gestartet: `sudo systemctl status moviebox`.
+
+**Metadaten-Worker scheint zu hängen**
+- `curl .../api/admin/status -H "Authorization: Bearer DEIN_API_TOKEN"` zeigt, wie viele Jobs `queued`, `running` oder `failed` sind. Logs: `sudo journalctl -u moviebox -f`.
+
+## 7. API-Endpunkte (Übersicht)
+
+Alle authentifizierten Endpoints erwarten `Authorization: Bearer <token>` oder bei `<video>`/`<audio>`-Elementen `?token=...` als Query.
 
 | Methode | Pfad | Beschreibung |
 |---|---|---|
-| `GET` | `/api/health` | Server-Statusanzeige (frei zugänglich). |
-| `POST` | `/api/login` | Login mit Benutzername + Passwort. |
-| `POST` | `/api/invite/accept` | Einladung einlösen (für ein neues Gerät). |
-| `GET` | `/api/me` | Eigenes Konto. |
-| `POST` | `/api/logout` | Aktuelles Gerät abmelden. |
-| `PATCH` | `/api/me` | Benutzername / Anzeigename ändern. |
-| `POST` | `/api/me/password` | Eigenes Passwort setzen. |
-| `POST` | `/api/me/invite` | Einladungscode für neues Gerät erstellen. |
-| `GET` | `/api/admin/users` | Alle Konten (nur Admin). |
-| `POST` | `/api/admin/users` | Konto anlegen (nur Admin). |
-| `DELETE` | `/api/admin/users/:id` | Konto löschen (nur Admin). |
-| `POST` | `/api/admin/users/:id/password` | Passwort eines Kontos zurücksetzen (nur Admin). |
-| `POST` | `/api/admin/server-token/rotate` | Neues `API_TOKEN` erzeugen (nur Admin). |
-| `GET` | `/api/admin/status` | Server-Kurzstatus (Version, Node, Uptime, RAM). |
-
-## Problemlösung
-
-- **„Der Dienst startet nicht"** – `sudo journalctl -u moviebox -n 50` zeigt die letzten Zeilen. Häufigste Ursache: MongoDB nicht erreichbar.
-- **„Benutzername oder Passwort falsch"** auch beim ersten Versuch – wahrscheinlich hast du noch kein Passwort gesetzt. Nutze das `API_TOKEN` als Bearer-Token (siehe Schritt 3 oben), um dir eins einzurichten.
-- **nginx meldet 502** – der Node-Dienst ist nicht gestartet. `sudo systemctl status moviebox`.
-
-## Ausbaustufen
-
-Siehe `README.md`. Jede Stufe erweitert diese Anleitung um die neuen Funktionen.
+| `GET`  | `/api/health` | Status (frei). |
+| `POST` | `/api/login` | Login. |
+| `POST` | `/api/invite/accept` | Einladung einlösen. |
+| `GET`  | `/api/me` | Eigenes Konto. |
+| `POST` | `/api/me/password` | Passwort setzen. |
+| `POST` | `/api/me/invite` | Einladungscode für neues Gerät. |
+| `GET`  | `/api/home` | „Weiter schauen" + „Neu hinzugefügt". |
+| `GET`  | `/api/library/summary` | Zählstände. |
+| `GET`  | `/api/movies` | Alle Filme. |
+| `GET`  | `/api/movies/:id` | Film-Details. |
+| `GET`  | `/api/shows` | Alle Serien. |
+| `GET`  | `/api/shows/:id` | Serie mit allen Staffeln & Folgen. |
+| `GET`  | `/api/episodes/:id` | Folge-Details. |
+| `GET`  | `/api/media/:id/stream` | Stream der Mediendatei. |
+| `GET`  | `/api/media/:id/subtitles/:index` | Untertitel-Sidecar. |
+| `GET`  | `/api/media/:id/resume` | Fortsetzen-Position. |
+| `POST` | `/api/media/:id/resume` | Fortsetzen-Position speichern. |
+| `GET`  | `/api/admin/users` | Alle Konten (Admin). |
+| `POST` | `/api/admin/users` | Konto anlegen (Admin). |
+| `DELETE` | `/api/admin/users/:id` | Konto löschen (Admin). |
+| `POST` | `/api/admin/users/:id/password` | Passwort zurücksetzen (Admin). |
+| `POST` | `/api/admin/server-token/rotate` | Neues `API_TOKEN` (Admin). |
+| `POST` | `/api/admin/scan` | Scan manuell auslösen (Admin). |
+| `GET`  | `/api/admin/status` | Server-Status + Job-Zahlen (Admin). |

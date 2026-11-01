@@ -1,0 +1,26 @@
+name: Server tests
+
+on:
+  push:
+    paths: ["server/**", ".github/workflows/server.yml"]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm ci
+      # Stage 2 is scaffolding + first endpoints: parse-check and run the (growing) node:test suite.
+      # Tests that need MongoDB are added as the suite grows; nothing here needs a service container yet.
+      - name: Syntax check
+        run: node --check src/*.js
+      - name: Unit tests
+        run: npm test
