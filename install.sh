@@ -139,6 +139,12 @@ SCAN_INTERVAL_SECONDS=300
 PREVIEW_KEEP_HOURS=48
 YTDLP_PATH=/usr/local/bin/yt-dlp
 # YTDLP_EXTRA_ARGS=--cookies /srv/moviebox/youtube-cookies.txt
+# TorrentIO base (default is the public instance)
+# TORRENTIO_BASE=https://torrentio.strem.fun
+# OpenSubtitles (optional): API-Key auf opensubtitles.com holen, Login für Download nötig
+# OPEN_SUBTITLES_API_KEY=
+# OPEN_SUBTITLES_USERNAME=
+# OPEN_SUBTITLES_PASSWORD=
 EOF
   ok "Konfiguration angelegt ($ENV_FILE)"
 fi

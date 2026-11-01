@@ -83,6 +83,7 @@ interface MovieBoxService {
     @retrofit2.http.DELETE("media/{id}") suspend fun deleteMedia(@Path("id") id: String): Map<String, Boolean>
     @GET("favorites") suspend fun favorites(): SearchResponse
     @GET("random") suspend fun random(): RandomResponse
+    @GET("episodes/{id}/next") suspend fun episodeNext(@Path("id") id: String): NextEpisodeResponse
 
     @GET("discover/sources") suspend fun discoverSources(
         @Query("tmdbId") tmdbId: Long? = null,

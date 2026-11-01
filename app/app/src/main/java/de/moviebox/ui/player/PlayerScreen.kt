@@ -24,12 +24,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import de.moviebox.data.Api
+import de.moviebox.data.MediaCard
 import de.moviebox.data.ResumeUpdate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,11 +52,12 @@ import kotlinx.coroutines.launch
  */
 @UnstableApi
 @Composable
-fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit) {
+fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit, onPlayNext: (String, String) -> Unit = { _, _ -> }) {
     val context = LocalContext.current
     val streamUrl = remember(mediaId) { Api.streamUrl(mediaId) }
     // scope kept alive for the final resume write on exit
     val finalScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
+    var nextEpisode by androidx.compose.runtime.mutableStateOf<MediaCard?>(null).let { androidx.compose.runtime.remember { it } }
 
     val player = remember {
         val sourceFactory = DefaultMediaSourceFactory(context).setDataSourceFactory(
@@ -62,6 +68,24 @@ fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit) {
             prepare()
             playWhenReady = true
         }
+    }
+
+    // Listen for playback end; if this is an episode, offer the next one.
+    androidx.compose.runtime.DisposableEffect(mediaId) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    finalScope.launch {
+                        try {
+                            // next-episode endpoint returns 404 for a movie id; the catch covers that.
+                            nextEpisode = runCatching { Api.service.episodeNext(mediaId).next }.getOrNull()
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
     }
 
     // Resume seek + periodic position reporting while the screen is on.
@@ -101,6 +125,9 @@ fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit) {
                 PlayerView(ctx).apply {
                     this.player = player
                     useController = true
+                    // Media3's built-in subtitle button and settings menu let the user
+                    // switch between audio tracks and embedded/sidecar subtitles.
+                    setShowSubtitleButton(true)
                     setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 }
@@ -122,5 +149,24 @@ fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit) {
         ) {
             Icon(Icons.Filled.Close, contentDescription = "Schließen", tint = Color.White)
         }
+    }
+
+    nextEpisode?.let { next ->
+        AlertDialog(
+            onDismissRequest = { nextEpisode = null },
+            title = { Text("Nächste Folge") },
+            text = {
+                Text("${next.showTitle} · S${next.season}E${next.episode?.toString()?.padStart(2, '0')}${if (next.title.isNotEmpty()) " · ${next.title}" else ""}")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val nextId = next.id
+                    val nextTitle = "${next.showTitle} · S${next.season}E${next.episode?.toString()?.padStart(2, '0')}${if (next.title.isNotEmpty()) " · ${next.title}" else ""}"
+                    nextEpisode = null
+                    onPlayNext(nextId, nextTitle)
+                }) { Text("Abspielen") }
+            },
+            dismissButton = { TextButton(onClick = { nextEpisode = null; onClose() }) { Text("Fertig") } },
+        )
     }
 }

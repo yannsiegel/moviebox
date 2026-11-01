@@ -494,14 +494,42 @@
   // ---------- playback ----------
   async function playEpisode(e) {
     const { positionSec } = await api(`/media/${e.id}/resume`).catch(() => ({ positionSec: 0 }));
-    play({ id: e.id, title: `${e.showTitle} · S${e.season}E${String(e.episode).padStart(2, '0')}${e.title ? ' · ' + e.title : ''}`, positionSec });
+    play({
+      id: e.id, isEpisode: true,
+      title: `${e.showTitle} · S${e.season}E${String(e.episode).padStart(2, '0')}${e.title ? ' · ' + e.title : ''}`,
+      positionSec,
+    });
   }
 
-  function play({ id, title, positionSec }) {
+  async function play({ id, title, positionSec, isEpisode = false }) {
     const video = $('#video');
+    const playerEl = $('#player');
+    // clear old tracks + overlays
+    for (const t of video.querySelectorAll('track')) t.remove();
+    const existingOverlay = document.getElementById('next-overlay');
+    if (existingOverlay) existingOverlay.remove();
+
     video.src = streamUrl(id);
     $('#player-title').textContent = title;
-    $('#player').hidden = false;
+    playerEl.hidden = false;
+
+    // Add sidecar subtitles as <track> elements for in-browser switching.
+    // Movies and episodes both have .subtitles[] in their detail endpoint.
+    const detailPath = isEpisode ? `/episodes/${id}` : `/movies/${id}`;
+    try {
+      const detail = await api(detailPath);
+      const subs = (detail.movie || detail.episode)?.subtitles || [];
+      subs.forEach((s, i) => {
+        const t = document.createElement('track');
+        t.kind = 'subtitles';
+        t.srclang = s.language || 'und';
+        t.label = s.language ? s.language.toUpperCase() : `Spur ${i + 1}`;
+        t.src = `/api/media/${id}/subtitles/${i}?token=${encodeURIComponent(State.token)}`;
+        if (i === 0) t.default = true;
+        video.appendChild(t);
+      });
+    } catch { /* detail fetch optional */ }
+
     const onLoaded = () => {
       if (positionSec > 15) video.currentTime = positionSec;
       video.removeEventListener('loadedmetadata', onLoaded);
@@ -511,9 +539,46 @@
       api(`/media/${id}/resume`, { method: 'POST', body: { positionSec: Math.floor(video.currentTime), durationSec: Math.floor(video.duration) || 0 } }).catch(() => {});
     };
     const interval = setInterval(reportResume, 10_000);
-    const cleanup = () => { clearInterval(interval); reportResume(); video.pause(); video.removeAttribute('src'); video.load(); };
-    $('#player-close').onclick = () => { cleanup(); $('#player').hidden = true; };
-    video.addEventListener('ended', () => { cleanup(); $('#player').hidden = true; });
+
+    const cleanup = () => {
+      clearInterval(interval); reportResume();
+      video.pause(); video.removeAttribute('src'); video.load();
+      const overlay = document.getElementById('next-overlay');
+      if (overlay) overlay.remove();
+    };
+    $('#player-close').onclick = () => { cleanup(); playerEl.hidden = true; };
+
+    const onEnded = async () => {
+      if (!isEpisode) { cleanup(); playerEl.hidden = true; return; }
+      try {
+        const data = await api(`/episodes/${id}/next`);
+        if (data.next) {
+          showNextUp(data.next, () => { cleanup(); playEpisode(data.next); }, () => { cleanup(); playerEl.hidden = true; });
+        } else { cleanup(); playerEl.hidden = true; }
+      } catch { cleanup(); playerEl.hidden = true; }
+    };
+    video.addEventListener('ended', onEnded, { once: true });
+  }
+
+  function showNextUp(nextEp, onPlay, onCancel) {
+    const overlay = el('div', { id: 'next-overlay' });
+    overlay.appendChild(el('div', { class: 'label' }, 'Nächste Folge'));
+    overlay.appendChild(el('div', { class: 'title' }, nextEp.title || `Folge ${nextEp.episode}`));
+    overlay.appendChild(el('div', { class: 'sub' }, `${nextEp.showTitle} · S${nextEp.season}E${String(nextEp.episode).padStart(2, '0')}`));
+    const timerEl = el('div', { class: 'countdown' }, '10');
+    overlay.appendChild(timerEl);
+    const row = el('div', { class: 'row' });
+    row.appendChild(el('button', { class: 'ghost', onClick: () => { clearInterval(timer); onCancel(); } }, 'Abbrechen'));
+    row.appendChild(el('button', { class: 'primary', onClick: () => { clearInterval(timer); onPlay(); } }, '▶  Jetzt abspielen'));
+    overlay.appendChild(row);
+    $('#player').appendChild(overlay);
+
+    let seconds = 10;
+    const timer = setInterval(() => {
+      seconds--;
+      timerEl.textContent = String(seconds);
+      if (seconds <= 0) { clearInterval(timer); onPlay(); }
+    }, 1000);
   }
 
   // ---------- upload ----------

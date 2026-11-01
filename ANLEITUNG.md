@@ -155,6 +155,12 @@ Die haltezeit für preview-dateien steht in `/opt/moviebox/server/.env` als `PRE
 
 **Löschen** – 🗑-button im detail-view. Löscht die videodatei im medienordner und den datenbank-eintrag.
 
+**Nächste folge** – nach ende einer episode zeigt der player automatisch die nächste an. Web: countdown-overlay unten rechts (10 s), klickst du „Abbrechen" bleibt das fenster zu, nichts tun = autoplay. Android: dialog, du bestätigst manuell.
+
+**Audio-/Untertitel-spuren im player** – web: rechtsklick aufs video → `Textspuren` oder standard-browser-untertitel-knopf. Android: unten im player-controls erscheint das untertitel-icon, dort kannst du sprachen und tonspuren wechseln. Alle verfügbaren spuren (embedded in der mkv + sidecar .srt neben der datei) werden angezeigt.
+
+**Untertitel automatisch nachladen** – wenn du einen OpenSubtitles-API-Key + login in `.env` einträgst (`OPEN_SUBTITLES_API_KEY=…`, `OPEN_SUBTITLES_USERNAME=…`, `OPEN_SUBTITLES_PASSWORD=…`), lädt moviebox nach jedem erfolgreichen TMDB-match die fehlenden deutschen und englischen .srt-dateien automatisch nach. API-key kostenlos auf https://www.opensubtitles.com/consumers (account anlegen → `New Consumer`), login ist dein normaler account.
+
 **Admin (⚙ im Web)** – konten anlegen und löschen, status mit job-zahlen (wie viele filme/serien, wie viele im scan, uptime), scan sofort auslösen, server-token rotieren.
 
 **Scan sofort auslösen** – oben rechts auf **↻** in web oder app. Oder per API siehe schritt 2 unten.
@@ -178,6 +184,7 @@ Alle authentifizierten Endpoints erwarten `Authorization: Bearer <token>` oder b
 | `GET`  | `/api/shows` | Alle Serien. |
 | `GET`  | `/api/shows/:id` | Serie mit allen Staffeln & Folgen. |
 | `GET`  | `/api/episodes/:id` | Folge-Details. |
+| `GET`  | `/api/episodes/:id/next` | Nächste folge (für autoplay). |
 | `GET`  | `/api/media/:id/stream` | Stream der Mediendatei. |
 | `GET`  | `/api/media/:id/subtitles/:index` | Untertitel-Sidecar. |
 | `GET`  | `/api/media/:id/resume` | Fortsetzen-Position. |

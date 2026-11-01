@@ -21,6 +21,7 @@ import { forEachUser } from './users.js';
 import { probe } from './ffprobe.js';
 import { parseFilename } from './parse-filename.js';
 import { backdropUrl, episodeDetails, isConfigured as tmdbEnabled, movieDetails, posterUrl, searchMovie, searchShow, showDetails } from './tmdb.js';
+import { ensureSidecars as fetchSubtitles, isConfigured as subtitlesEnabled } from './subtitles.js';
 import { failureGroup } from './failures.js';
 
 const STEP_VERSION = 1;
@@ -82,7 +83,17 @@ async function processMovie(job, parsed, media) {
     }
   }
 
-  const subs = await findSidecarSubtitles(job.payload.absolute);
+  let subs = await findSidecarSubtitles(job.payload.absolute);
+  // if TMDB matched and OpenSubtitles is configured, try to fill gaps for de + en
+  if (tmdbId && subtitlesEnabled()) {
+    try {
+      const have = subs.map((s) => s.language).filter(Boolean);
+      const added = await fetchSubtitles({ videoAbsolute: job.payload.absolute, tmdbId, kind: 'movie', existingLanguages: have });
+      if (added.length) subs = await findSidecarSubtitles(job.payload.absolute);
+    } catch (err) {
+      console.warn(`[metadata] OpenSubtitles for "${title}": ${err.message}`);
+    }
+  }
   await db.movies.updateOne(
     { sourceId: job.sourceId },
     {
@@ -154,7 +165,16 @@ async function processEpisode(job, parsed, media) {
     }
   }
 
-  const subs = await findSidecarSubtitles(job.payload.absolute);
+  let subs = await findSidecarSubtitles(job.payload.absolute);
+  if (showTmdbId && subtitlesEnabled()) {
+    try {
+      const have = subs.map((s) => s.language).filter(Boolean);
+      const added = await fetchSubtitles({ videoAbsolute: job.payload.absolute, tmdbId: showTmdbId, kind: 'episode', season: parsed.season, episode: parsed.episode, existingLanguages: have });
+      if (added.length) subs = await findSidecarSubtitles(job.payload.absolute);
+    } catch (err) {
+      console.warn(`[metadata] OpenSubtitles for ${parsed.showTitle} S${parsed.season}E${parsed.episode}: ${err.message}`);
+    }
+  }
   await db.episodes.updateOne(
     { sourceId: job.sourceId },
     {

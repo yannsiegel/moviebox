@@ -141,6 +141,25 @@ h2:first-child { margin-top: 0; }
   background: rgba(0,0,0,.5); padding: 6px 12px; border-radius: 6px; font-size: 14px;
 }
 
+#next-overlay {
+  position: absolute; right: 24px; bottom: 70px; z-index: 2;
+  background: rgba(17,20,26,.95); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 24px; min-width: 320px; backdrop-filter: blur(6px);
+}
+#next-overlay .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+#next-overlay .title { font-size: 18px; font-weight: 600; margin-top: 4px; }
+#next-overlay .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+#next-overlay .countdown {
+  position: absolute; top: 16px; right: 20px;
+  font-size: 28px; font-weight: 700; color: var(--accent);
+}
+#next-overlay .row { display: flex; gap: 10px; margin-top: 14px; }
+#next-overlay button {
+  padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer;
+}
+#next-overlay button.primary { background: var(--text); color: var(--accent-text); font-weight: 600; }
+#next-overlay button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+
 .empty {
   color: var(--muted); padding: 40px 20px; text-align: center;
   background: var(--bg-elev); border-radius: 12px; border: 1px dashed var(--border);

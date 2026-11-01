@@ -184,3 +184,6 @@ data class DiscoverSourcesResponse(
     val sources: List<DiscoverSource> = emptyList(),
     val capabilities: Map<String, Boolean> = emptyMap(),
 )
+
+@Serializable
+data class NextEpisodeResponse(val next: MediaCard? = null)

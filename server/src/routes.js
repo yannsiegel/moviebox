@@ -168,6 +168,22 @@ api.get('/episodes/:id', handle(async (req, res) => {
   res.json({ episode: serialize(episode) });
 }));
 
+/** The "next up" episode after this one. First tries same season / episode+1,
+ *  then next season / episode 1, then null. */
+api.get('/episodes/:id/next', handle(async (req, res) => {
+  const episode = await db.episodes.findOne({ _id: toObjectId(req.params.id) });
+  if (!episode) return res.status(404).json({ error: 'Folge nicht gefunden' });
+  let next = await db.episodes.findOne({
+    showId: episode.showId, season: episode.season, episode: episode.episode + 1,
+  });
+  if (!next) {
+    next = await db.episodes.find({
+      showId: episode.showId, season: episode.season + 1,
+    }).sort({ episode: 1 }).limit(1).next();
+  }
+  res.json({ next: next ? listEpisode(next) : null });
+}));
+
 // Case-insensitive search across the library (movies + shows + episodes).
 api.get('/search', handle(async (req, res) => {
   const q = String(req.query.q || '').trim();

@@ -132,6 +132,12 @@ class MainActivity : ComponentActivity() {
                             mediaId = entry.arguments?.getString("id").orEmpty(),
                             title = Uri.decode(entry.arguments?.getString("title").orEmpty()),
                             onClose = { navController.popBackStack() },
+                            onPlayNext = { nextId, nextTitle ->
+                                val t = Uri.encode(nextTitle)
+                                navController.navigate("player/$nextId?title=$t") {
+                                    popUpTo("player/{id}?title={title}") { inclusive = true }
+                                }
+                            },
                         )
                     }
                 }
