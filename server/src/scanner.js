@@ -63,6 +63,11 @@ async function scanOne() {
 
     // Movies and episodes share the "source" shape - we insert a placeholder with no kind yet
     // and let the metadata worker decide movie vs. episode after parse-filename + ffprobe.
+    const inPreview = relative.startsWith('preview/') || relative.startsWith('preview' + path.sep);
+    const previewExpiresAt = inPreview
+      ? new Date(stat.mtimeMs + (config.previewKeepHours || 48) * 3_600_000)
+      : null;
+
     const existing = await db.jobs.findOne({ sourceId });
     if (!existing) {
       await db.jobs.insertOne({
@@ -70,6 +75,8 @@ async function scanOne() {
         kind: 'scan-local',
         status: 'queued',
         payload: { relative, absolute, sizeBytes, mtimeMs },
+        preview: inPreview,
+        previewExpiresAt,
         createdAt: new Date(),
         updatedAt: new Date(),
       });

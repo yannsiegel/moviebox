@@ -86,7 +86,7 @@ async function processMovie(job, parsed, media) {
   await db.movies.updateOne(
     { sourceId: job.sourceId },
     {
-      $setOnInsert: { sourceId: job.sourceId, source: 'local', createdAt: new Date() },
+      $setOnInsert: { sourceId: job.sourceId, source: job.sourceUrl ? 'download' : 'local', createdAt: new Date() },
       $set: {
         title,
         year: year || null,
@@ -100,6 +100,9 @@ async function processMovie(job, parsed, media) {
         subtitles: subs,
         path: job.payload.relative,
         sizeBytes: job.payload.sizeBytes,
+        preview: Boolean(job.preview),
+        previewExpiresAt: job.previewExpiresAt || null,
+        sourceUrl: job.sourceUrl || null,
         updatedAt: new Date(),
         addedAt: new Date(),
         stepVersion: STEP_VERSION,
@@ -155,7 +158,7 @@ async function processEpisode(job, parsed, media) {
   await db.episodes.updateOne(
     { sourceId: job.sourceId },
     {
-      $setOnInsert: { sourceId: job.sourceId, source: 'local', createdAt: new Date() },
+      $setOnInsert: { sourceId: job.sourceId, source: job.sourceUrl ? 'download' : 'local', createdAt: new Date() },
       $set: {
         showId: show._id,
         showTitle: show.title,
@@ -169,6 +172,9 @@ async function processEpisode(job, parsed, media) {
         subtitles: subs,
         path: job.payload.relative,
         sizeBytes: job.payload.sizeBytes,
+        preview: Boolean(job.preview),
+        previewExpiresAt: job.previewExpiresAt || null,
+        sourceUrl: job.sourceUrl || null,
         updatedAt: new Date(),
         addedAt: new Date(),
         stepVersion: STEP_VERSION,

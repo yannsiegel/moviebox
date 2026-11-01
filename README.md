@@ -12,10 +12,13 @@ Als Vorbild dient [TuneBox](https://github.com/yannsiegel/tunebox) – der Grund
                           └──── liefert Videodateien direkt aus (X-Accel-Redirect)
 ```
 
-## Funktionen (Stufe 2.1 – aktueller Stand)
+## Funktionen (Stufe 2.2 – aktueller Stand)
 
 - **Ordner-Scanner**: Legt du eine Videodatei nach `/srv/moviebox/media/`, taucht sie innerhalb weniger Minuten in der Bibliothek auf. Umbenennen oder Löschen wirkt genauso.
 - **Upload direkt per Web und App**: Drag & Drop ins browserfenster oder Taste in der oberen Leiste. Die Datei landet im Medienordner, der Scanner holt sie sofort rein.
+- **URL-Downloads** (⁺-Taste in Web und App): YouTube, Vimeo, Archive.org, BBC, ARD, ZDF, Arte und etwa 1.800 weitere Seiten über **yt-dlp**; direkte `.mp4`/`.mkv`-Links werden ohne Umweg geladen. Zwei Modi:
+  - **Behalten:** Download landet dauerhaft in der Bibliothek.
+  - **Nur einmal schauen (Preview):** Download in `preview/`, wird nach 48 h (konfigurierbar) automatisch gelöscht. Zum einmaligen Streamen gedacht.
 - **Suche** über die lokale Bibliothek (Filme, Serien, Folgen) mit Sofort-Ergebnissen.
 - **„Entdecken"-Tab**: TMDB-Suche und wöchentliche Trends als Ideen-Fundus – zeigt was es gibt, auch wenn du's noch nicht hast.
 - **Admin-Bereich** im Web (⚙): Konten anlegen und löschen, Status mit Job-Zahlen, Scan auslösen, Server-Token rotieren.

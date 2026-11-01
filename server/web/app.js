@@ -108,6 +108,7 @@
     const poster = el('div', { class: 'poster' });
     if (m.poster) poster.appendChild(el('img', { src: m.poster, loading: 'lazy', alt: m.title }));
     else poster.appendChild(el('div', { class: 'fallback' }, m.title));
+    if (m.preview) poster.appendChild(el('div', { class: 'badge' }, 'PREVIEW'));
     card.appendChild(poster);
     card.appendChild(el('div', { class: 'title' }, m.title));
     if (m.year) card.appendChild(el('div', { class: 'sub' }, String(m.year)));
@@ -123,6 +124,7 @@
     const poster = el('div', { class: 'poster' });
     if (e.still) poster.appendChild(el('img', { src: e.still, loading: 'lazy', alt: e.title }));
     else poster.appendChild(el('div', { class: 'fallback' }, `S${e.season}E${e.episode}`));
+    if (e.preview) poster.appendChild(el('div', { class: 'badge' }, 'PREVIEW'));
     card.appendChild(poster);
     card.appendChild(el('div', { class: 'title' }, e.title || `Folge ${e.episode}`));
     card.appendChild(el('div', { class: 'sub' }, `${e.showTitle} · S${e.season}E${String(e.episode).padStart(2, '0')}`));
@@ -162,10 +164,11 @@
   function emptyLibrary(parentContainer) {
     const empty = el('div', { class: 'empty' });
     empty.appendChild(el('h3', {}, 'Noch keine Inhalte'));
-    empty.appendChild(el('p', {}, 'Lade Videos per Drag&Drop in dieses Fenster, über die Upload-Taste oben, oder lege sie direkt in /srv/moviebox/media/.'));
+    empty.appendChild(el('p', {}, 'Lade Videos per Drag&Drop in dieses Fenster, über die Upload-Taste oben, hol sie von einer URL (YouTube, Vimeo, Archive.org, …), oder lege sie direkt in /srv/moviebox/media/.'));
     empty.appendChild(el('p', {}, 'Dateinamen helfen beim Zuordnen: „Film (Jahr).mkv" oder „Serie/Season 1/Serie.S01E01.mkv".'));
     const cta = el('div', { class: 'cta' });
-    cta.appendChild(el('button', { onClick: () => $('#file-picker').click() }, 'Datei auswählen'));
+    cta.appendChild(el('button', { onClick: openUrlSource }, '+ Von URL holen'));
+    cta.appendChild(el('button', { class: 'ghost', onClick: () => $('#file-picker').click() }, 'Datei auswählen'));
     cta.appendChild(el('button', { class: 'ghost', onClick: () => nav('discover') }, 'Entdecken (TMDB)'));
     cta.appendChild(el('button', { class: 'ghost', onClick: triggerScan }, 'Jetzt scannen'));
     empty.appendChild(cta);
@@ -462,8 +465,112 @@
     $('#modal').hidden = false;
     renderer(body).catch((err) => { body.innerHTML = ''; body.appendChild(el('div', { class: 'empty' }, 'Fehler: ' + err.message)); });
   }
-  $('#modal .modal-close').addEventListener('click', () => { $('#modal').hidden = true; });
-  $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') $('#modal').hidden = true; });
+  function closeModal() {
+    $('#modal').hidden = true;
+    document.dispatchEvent(new CustomEvent('mb-modal-close'));
+  }
+  $('#modal .modal-close').addEventListener('click', closeModal);
+  $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+
+  // ---------- URL source dialog ----------
+  async function openUrlSource() {
+    openModal(async (body) => {
+      body.appendChild(el('h2', {}, 'Video per URL hinzufügen'));
+      body.appendChild(el('p', { style: 'color:var(--muted);font-size:13px;margin:0 0 12px' },
+        'YouTube, Vimeo, Archive.org, direkte .mp4/.mkv-Links – alles, was yt-dlp kennt.'));
+
+      const urlIn = el('input', { type: 'url', placeholder: 'https://…', style: 'width:100%' });
+      body.appendChild(urlIn);
+
+      const info = el('div', { style: 'min-height:1.4em;margin:10px 0;color:var(--muted);font-size:13px' });
+      body.appendChild(info);
+
+      // Mode choice
+      const modeWrap = el('div', { style: 'display:flex;gap:12px;margin:12px 0 4px' });
+      const keepId = 'mode-keep', prevId = 'mode-preview';
+      modeWrap.appendChild(el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer' }, [
+        el('input', { type: 'radio', name: 'mode', value: 'keep', id: keepId, checked: 'checked' }),
+        'Behalten',
+      ]));
+      modeWrap.appendChild(el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer' }, [
+        el('input', { type: 'radio', name: 'mode', value: 'preview', id: prevId }),
+        'Nur einmal schauen (nach 48 h weg)',
+      ]));
+      body.appendChild(modeWrap);
+
+      const row = el('div', { class: 'form-row' });
+      const probeBtn = el('button', { onClick: async () => {
+        info.textContent = 'Prüfe …';
+        try {
+          const data = await api('/sources/resolve', { method: 'POST', body: { url: urlIn.value.trim() } });
+          const bits = [data.info.title || '(ohne Titel)'];
+          if (data.info.durationSec) bits.push(`${Math.round(data.info.durationSec / 60)} min`);
+          if (data.info.sizeBytes) bits.push(`${(data.info.sizeBytes / 1_073_741_824).toFixed(2)} GB`);
+          if (data.info.extractor) bits.push(data.info.extractor);
+          info.style.color = 'var(--text)';
+          info.textContent = bits.join(' · ');
+        } catch (err) {
+          info.style.color = 'var(--err)';
+          info.textContent = err.message;
+        }
+      } }, 'Prüfen');
+      const addBtn = el('button', { class: 'primary', onClick: async () => {
+        const mode = document.querySelector('input[name=mode]:checked')?.value || 'keep';
+        try {
+          await api('/sources/add', { method: 'POST', body: { url: urlIn.value.trim(), mode } });
+          toast(mode === 'preview' ? '✓ Preview-Download läuft …' : '✓ Download läuft …', 'ok');
+          renderJobs();
+        } catch (err) { toast(err.message, 'err'); }
+      } }, 'Hinzufügen');
+      row.appendChild(probeBtn);
+      row.appendChild(addBtn);
+      body.appendChild(row);
+
+      // ---- active + recent jobs
+      body.appendChild(el('h3', { style: 'margin-top:24px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px' }, 'Laufende & letzte Downloads'));
+      const jobsHost = el('div');
+      body.appendChild(jobsHost);
+      let intervalId = null;
+      async function renderJobs() {
+        try {
+          const { jobs } = await api('/sources/jobs');
+          jobsHost.innerHTML = '';
+          if (!jobs.length) { jobsHost.appendChild(el('div', { class: 'empty', style: 'padding:14px' }, 'Noch nichts.')); return; }
+          for (const j of jobs) jobsHost.appendChild(jobRow(j));
+        } catch { /* modal might be closed */ }
+      }
+      function jobRow(j) {
+        const row = el('div', { class: 'row' });
+        const left = el('div', { class: 'name' });
+        left.appendChild(el('div', { style: 'font-weight:500' }, j.payload?.url || '(ohne URL)'));
+        const sub = [];
+        sub.push(j.status);
+        if (j.payload?.mode === 'preview') sub.push('preview');
+        if (j.progress?.pct !== undefined) sub.push(`${j.progress.pct.toFixed(1)} %`);
+        if (j.progress?.speed) sub.push(j.progress.speed);
+        if (j.progress?.eta) sub.push('ETA ' + j.progress.eta);
+        if (j.error) sub.push(j.error);
+        left.appendChild(el('div', { style: 'color:var(--muted);font-size:12px' }, sub.join(' · ')));
+        if (j.progress?.pct !== undefined && j.status !== 'done') {
+          const bar = el('div', { style: 'height:3px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden' });
+          bar.appendChild(el('div', { style: `width:${j.progress.pct}%;height:100%;background:var(--accent)` }));
+          left.appendChild(bar);
+        }
+        row.appendChild(left);
+        row.appendChild(el('button', { class: 'danger', onClick: async () => {
+          try { await api('/sources/jobs/' + j.id, { method: 'DELETE' }); renderJobs(); }
+          catch (err) { toast(err.message, 'err'); }
+        } }, '×'));
+        return row;
+      }
+
+      renderJobs();
+      intervalId = setInterval(renderJobs, 2000);
+      // stop polling when the modal closes
+      const stopPoll = () => { clearInterval(intervalId); document.removeEventListener('mb-modal-close', stopPoll); };
+      document.addEventListener('mb-modal-close', stopPoll);
+    });
+  }
 
   async function openAdmin() {
     openModal(async (body) => {
@@ -576,6 +683,7 @@
     if (e.key === 'Escape') { e.target.value = ''; nav('home'); }
   });
 
+  $('#url-btn').addEventListener('click', openUrlSource);
   $('#upload-btn').addEventListener('click', () => $('#file-picker').click());
   $('#scan-btn').addEventListener('click', triggerScan);
   $('#admin-btn').addEventListener('click', openAdmin);

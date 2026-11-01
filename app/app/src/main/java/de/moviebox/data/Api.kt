@@ -74,5 +74,9 @@ interface MovieBoxService {
     @GET("discover/search") suspend fun discoverSearch(@Query("q") q: String): DiscoverResponse
     @GET("discover/trending") suspend fun discoverTrending(): DiscoverResponse
 
+    @POST("sources/resolve") suspend fun sourcesResolve(@Body body: Map<String, String>): ResolveResponse
+    @POST("sources/add") suspend fun sourcesAdd(@Body body: SourceAddRequest): AddJobResponse
+    @GET("sources/jobs") suspend fun sourcesJobs(): SourceJobsResponse
+
     @POST("admin/scan") suspend fun adminScan(): Map<String, Boolean>
 }

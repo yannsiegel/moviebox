@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import de.moviebox.data.SessionManager
+import de.moviebox.ui.library.AddUrlScreen
 import de.moviebox.ui.library.HomeTabs
 import de.moviebox.ui.library.MovieDetailScreen
 import de.moviebox.ui.library.SearchScreen
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
                                 navController.navigate("player/$id?title=$t")
                             },
                             onSearch = { navController.navigate("search") },
+                            onAddUrl = { navController.navigate("add-url") },
                             onLogout = {
                                 SessionManager.clear()
                                 navController.navigate("login") {
@@ -54,6 +56,9 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                         )
+                    }
+                    composable("add-url") {
+                        AddUrlScreen(onBack = { navController.popBackStack() })
                     }
                     composable("search") {
                         SearchScreen(

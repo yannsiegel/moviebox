@@ -140,6 +140,13 @@ Häufigste Ursache: MongoDB nicht erreichbar. Prüfen: `sudo systemctl status mo
 
 **Upload** – zieh die videodatei einfach ins browserfenster (ganzflächig drag&drop) oder klick oben rechts auf **⬆**. Die datei landet im medienordner, der scanner holt sie sofort rein – nach ein paar sekunden siehst du sie in der bibliothek.
 
+**Video per URL holen** – klick auf **+** oben rechts (web und app). Dialog öffnet sich: URL einwerfen (youtube, vimeo, archive.org, direkte .mp4/.mkv-links, …), optional **Prüfen** klicken für titel/dauer/größe-vorschau, modus wählen:
+- **Behalten** – landet dauerhaft in der bibliothek
+- **Nur einmal schauen** – geht in den `preview/`-ordner, wird nach 48 h automatisch gelöscht. Zum einmaligen streamen gedacht.
+Dann **Hinzufügen**. Der downloader läuft im hintergrund, du siehst live den fortschritt (im admin-bereich oder im URL-dialog).
+
+Die haltezeit für preview-dateien steht in `/opt/moviebox/server/.env` als `PREVIEW_KEEP_HOURS=48` – kannst du ändern, dann `sudo systemctl restart moviebox`.
+
 **Entdecken-Tab** – zeigt wöchentliche TMDB-trends und eine suche über TMDB. Herunterladen daraus geht nicht – aber du siehst was es gibt, wie der titel bei TMDB heißt (hilft beim benennen deiner dateien) und ob's als film oder serie geführt wird.
 
 **Admin (⚙ im Web)** – konten anlegen und löschen, status mit job-zahlen (wie viele filme/serien, wie viele im scan, uptime), scan sofort auslösen, server-token rotieren.
@@ -180,3 +187,7 @@ Alle authentifizierten Endpoints erwarten `Authorization: Bearer <token>` oder b
 | `GET`  | `/api/discover/search?q=…` | TMDB-Volltextsuche (braucht TMDB-Key). |
 | `GET`  | `/api/discover/trending` | TMDB-Trends dieser Woche (braucht TMDB-Key). |
 | `POST` | `/api/upload` | Videodatei als Raw-Body hochladen (`X-Filename`-Header mit dem Dateinamen). |
+| `POST` | `/api/sources/resolve` | URL prüfen (titel, dauer, größe, ohne download). |
+| `POST` | `/api/sources/add` | URL in die download-queue stellen (`{url, mode: "keep"\|"preview"}`). |
+| `GET`  | `/api/sources/jobs` | Laufende und letzte URL-downloads mit fortschritt. |
+| `DELETE` | `/api/sources/jobs/:id` | Download-job entfernen. |

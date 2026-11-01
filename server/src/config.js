@@ -62,6 +62,8 @@ export const config = {
   maxTranscodeHeight: Number(process.env.MAX_TRANSCODE_HEIGHT || 1080),
   // Number of concurrent transcode jobs. CPU-only means 1 is the honest answer.
   transcodeConcurrency: Number(process.env.TRANSCODE_CONCURRENCY || 1),
+  // Preview downloads live in <videoDir>/preview/ and are deleted after this many hours.
+  previewKeepHours: Number(process.env.PREVIEW_KEEP_HOURS || 48),
   // Daily backup of the database; the last BACKUP_KEEP files are kept.
   get backupDir() {
     return activeTenant()?.backupDir ?? backupRoot;

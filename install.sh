@@ -84,6 +84,28 @@ DEBIAN_FRONTEND=noninteractive apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${packages[@]}" >/dev/null
 ok "Pakete installiert"
 
+# ------------------------------------------------------------------ yt-dlp
+step "Installiere/aktualisiere yt-dlp (für Downloads via URL: YouTube, Vimeo, Archive.org, …)"
+if curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp.new; then
+  chmod a+rx /usr/local/bin/yt-dlp.new
+  mv /usr/local/bin/yt-dlp.new /usr/local/bin/yt-dlp
+elif [[ -x /usr/local/bin/yt-dlp ]]; then
+  rm -f /usr/local/bin/yt-dlp.new
+  warn "Download fehlgeschlagen, behalte die vorhandene Version"
+else
+  warn "yt-dlp konnte nicht von GitHub geladen werden. URL-Downloads werden erst klappen, sobald yt-dlp vorhanden ist."
+fi
+if [[ -x /usr/local/bin/yt-dlp ]]; then
+  ok "yt-dlp $(/usr/local/bin/yt-dlp --version)"
+fi
+
+cat > /etc/cron.daily/moviebox-yt-dlp <<'EOF'
+#!/bin/sh
+# yt-dlp ändert sich oft; ein veraltetes yt-dlp ist die häufigste Ursache für fehlschlagende Downloads.
+[[ -x /usr/local/bin/yt-dlp ]] && /usr/local/bin/yt-dlp -U --update-to stable >/dev/null 2>&1 || true
+EOF
+chmod +x /etc/cron.daily/moviebox-yt-dlp
+
 # ------------------------------------------------------------------ Code & Konfiguration
 step "Installiere den MovieBox-Server nach $INSTALL_DIR"
 id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --home "$INSTALL_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
@@ -114,6 +136,9 @@ MOVIEBOX_DOMAIN=$DOMAIN
 TMDB_API_KEY=$TMDB_API_KEY
 TMDB_LANGUAGE=de-DE
 SCAN_INTERVAL_SECONDS=300
+PREVIEW_KEEP_HOURS=48
+YTDLP_PATH=/usr/local/bin/yt-dlp
+# YTDLP_EXTRA_ARGS=--cookies /srv/moviebox/youtube-cookies.txt
 EOF
   ok "Konfiguration angelegt ($ENV_FILE)"
 fi

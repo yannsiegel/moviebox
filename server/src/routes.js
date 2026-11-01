@@ -13,6 +13,8 @@ import { scanAll } from './scanner.js';
 import { findMedia, serveMedia } from './stream.js';
 import { receiveUpload } from './uploads.js';
 import { isConfigured as tmdbEnabled, multiSearch, normalizeTmdb, trending } from './tmdb.js';
+import { events } from './events.js';
+import { probe as probeSource } from './sources/index.js';
 
 export const api = express.Router();
 api.use(express.json({ limit: '1mb' }));
@@ -309,6 +311,52 @@ api.post('/upload', handle(async (req, res) => {
   // scanner picks it up on its next tick; a nudge keeps it feeling immediate
   scanAll().catch((err) => console.error(`Post-upload scan: ${err.message}`));
   res.json({ ok: true, file: result.name, relative: result.relative, sizeBytes: result.sizeBytes });
+}));
+
+// ---------- URL sources: resolve + add + list jobs ----------
+
+api.post('/sources/resolve', handle(async (req, res) => {
+  const url = String(req.body?.url || '').trim();
+  if (!url) return res.status(400).json({ error: 'URL fehlt' });
+  const info = await probeSource(url);
+  res.json({ info });
+}));
+
+api.post('/sources/add', handle(async (req, res) => {
+  const url = String(req.body?.url || '').trim();
+  const mode = req.body?.mode === 'preview' ? 'preview' : 'keep';
+  const keepHours = Math.max(1, Math.min(24 * 30, Number(req.body?.keepHours) || 0)) || null;
+  if (!url) return res.status(400).json({ error: 'URL fehlt' });
+  const job = {
+    kind: 'download-url',
+    status: 'queued',
+    payload: { url, mode, keepHours },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const { insertedId } = await db.jobs.insertOne(job);
+  events.emit('download-queued');
+  res.json({ ok: true, jobId: String(insertedId) });
+}));
+
+/**
+ * Lists running and recent download jobs for the current user, so the UI can show progress bars
+ * and failure reasons.
+ */
+api.get('/sources/jobs', handle(async (_req, res) => {
+  const jobs = await db.jobs
+    .find({ kind: 'download-url' })
+    .sort({ updatedAt: -1 })
+    .limit(50)
+    .toArray();
+  res.json({ jobs: jobs.map(serialize) });
+}));
+
+api.delete('/sources/jobs/:id', handle(async (req, res) => {
+  const _id = toObjectId(req.params.id);
+  if (!_id) return res.status(400).json({ error: 'Ungültige Job-ID' });
+  await db.jobs.deleteOne({ _id, kind: 'download-url' });
+  res.json({ ok: true });
 }));
 
 // ------------------------------------------------------------------ errors

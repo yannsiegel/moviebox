@@ -116,3 +116,45 @@ data class DiscoverItem(
 
 @Serializable
 data class DiscoverResponse(val results: List<DiscoverItem> = emptyList())
+
+@Serializable
+data class SourceInfo(
+    val backend: String,
+    val kind: String,
+    val title: String,
+    val durationSec: Double? = null,
+    val sizeBytes: Long? = null,
+    val sourceUrl: String? = null,
+    val extractor: String? = null,
+    val thumbnail: String? = null,
+    val year: Int? = null,
+    val filename: String? = null,
+    val uploader: String? = null,
+)
+
+@Serializable
+data class ResolveResponse(val info: SourceInfo)
+
+@Serializable
+data class SourceAddRequest(val url: String, val mode: String = "keep")
+
+@Serializable
+data class AddJobResponse(val ok: Boolean = true, val jobId: String? = null)
+
+@Serializable
+data class JobPayload(val url: String? = null, val mode: String? = null)
+
+@Serializable
+data class JobProgress(val pct: Double? = null, val speed: String? = null, val eta: String? = null, val size: String? = null)
+
+@Serializable
+data class SourceJob(
+    val id: String,
+    val status: String,
+    val payload: JobPayload? = null,
+    val progress: JobProgress? = null,
+    val error: String? = null,
+)
+
+@Serializable
+data class SourceJobsResponse(val jobs: List<SourceJob> = emptyList())

@@ -7,6 +7,8 @@ import { api } from './routes.js';
 import { startBackups } from './maintenance.js';
 import { startScanner } from './scanner.js';
 import { startMetadataWorker } from './metadata.js';
+import { startDownloader } from './downloader.js';
+import { startCleanup } from './cleanup.js';
 import { ensureAdmin, listUsers, prepareUser } from './users.js';
 
 await connectDb();
@@ -38,6 +40,8 @@ const server = app.listen(config.port, config.host, () => {
 startBackups();
 startScanner();
 startMetadataWorker();
+startDownloader();
+startCleanup();
 
 async function shutdown() {
   server.close();

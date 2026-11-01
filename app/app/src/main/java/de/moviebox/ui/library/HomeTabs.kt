@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -36,6 +37,7 @@ fun HomeTabs(
     onOpenShow: (String) -> Unit,
     onPlay: (String, String) -> Unit,
     onSearch: () -> Unit,
+    onAddUrl: () -> Unit,
     onLogout: () -> Unit,
 ) {
     val tabs = listOf("Start", "Filme", "Serien", "Entdecken")
@@ -50,6 +52,9 @@ fun HomeTabs(
                 actions = {
                     IconButton(onClick = onSearch) {
                         Icon(Icons.Filled.Search, contentDescription = "Suchen")
+                    }
+                    IconButton(onClick = onAddUrl) {
+                        Icon(Icons.Filled.Add, contentDescription = "URL hinzufügen")
                     }
                     IconButton(onClick = {
                         scope.launch {
