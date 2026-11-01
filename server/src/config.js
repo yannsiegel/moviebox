@@ -74,6 +74,8 @@ export const config = {
   tmdbImageBase: process.env.TMDB_IMAGE_BASE || 'https://image.tmdb.org/t/p',
   openSubtitlesApi: process.env.OPEN_SUBTITLES_API || 'https://api.opensubtitles.com/api/v1',
   openSubtitlesApiKey: process.env.OPEN_SUBTITLES_API_KEY || '',
+  // TorrentIO base URL (default is the public one; swap in a mirror or self-hosted instance if ever needed)
+  torrentioBase: process.env.TORRENTIO_BASE || 'https://torrentio.strem.fun',
   // delay before background workers start after boot (tests use a short one)
   workerStartDelayMs: Number(process.env.WORKER_START_DELAY_MS || 20_000),
 };

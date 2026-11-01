@@ -17,9 +17,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,20 +47,28 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.rememberCoroutineScope
 import de.moviebox.data.Api
 import de.moviebox.data.MovieDetail
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MovieDetailScreen(movieId: String, onBack: () -> Unit, onPlay: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
     var movie by remember { mutableStateOf<MovieDetail?>(null) }
     var positionSec by remember { mutableStateOf(0.0) }
     var error by remember { mutableStateOf<String?>(null) }
+    var liked by remember { mutableStateOf(false) }
+    var confirmingDelete by remember { mutableStateOf(false) }
 
     LaunchedEffect(movieId) {
         error = null
         try {
-            movie = Api.service.movie(movieId).movie
+            val m = Api.service.movie(movieId).movie
+            movie = m
+            liked = m.liked
             positionSec = Api.service.getResume(movieId).positionSec
         } catch (ex: Exception) {
             error = ex.message
@@ -98,6 +113,35 @@ fun MovieDetailScreen(movieId: String, onBack: () -> Unit, onPlay: (String) -> U
                         Spacer(Modifier.width(6.dp))
                         Text(label)
                     }
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(
+                            onClick = {
+                                val next = !liked
+                                liked = next
+                                scope.launch {
+                                    try {
+                                        if (next) Api.service.likeMedia(movieId) else Api.service.unlikeMedia(movieId)
+                                    } catch (_: Exception) { liked = !next }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                contentDescription = null,
+                                tint = if (liked) Color(0xFFE94560) else MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Favorit")
+                        }
+                        OutlinedButton(
+                            onClick = { confirmingDelete = true },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Löschen", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
             if (!m.overview.isNullOrEmpty()) {
@@ -105,6 +149,24 @@ fun MovieDetailScreen(movieId: String, onBack: () -> Unit, onPlay: (String) -> U
                 Text(m.overview, style = MaterialTheme.typography.bodyMedium)
             }
         }
+    }
+
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("Film löschen?") },
+            text = { Text("Datei im Medienordner wird mitgelöscht. Nicht rückgängig zu machen.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmingDelete = false
+                    scope.launch {
+                        try { Api.service.deleteMedia(movieId); onBack() }
+                        catch (_: Exception) {}
+                    }
+                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text("Abbrechen") } },
+        )
     }
 }
 

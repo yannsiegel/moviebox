@@ -78,5 +78,18 @@ interface MovieBoxService {
     @POST("sources/add") suspend fun sourcesAdd(@Body body: SourceAddRequest): AddJobResponse
     @GET("sources/jobs") suspend fun sourcesJobs(): SourceJobsResponse
 
+    @POST("media/{id}/like") suspend fun likeMedia(@Path("id") id: String): Map<String, Boolean>
+    @retrofit2.http.DELETE("media/{id}/like") suspend fun unlikeMedia(@Path("id") id: String): Map<String, Boolean>
+    @retrofit2.http.DELETE("media/{id}") suspend fun deleteMedia(@Path("id") id: String): Map<String, Boolean>
+    @GET("favorites") suspend fun favorites(): SearchResponse
+    @GET("random") suspend fun random(): RandomResponse
+
+    @GET("discover/sources") suspend fun discoverSources(
+        @Query("tmdbId") tmdbId: Long? = null,
+        @Query("kind") kind: String? = null,
+        @Query("title") title: String? = null,
+        @Query("year") year: Int? = null,
+    ): DiscoverSourcesResponse
+
     @POST("admin/scan") suspend fun adminScan(): Map<String, Boolean>
 }

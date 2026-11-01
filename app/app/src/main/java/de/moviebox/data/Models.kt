@@ -33,6 +33,8 @@ data class MediaCard(
     val season: Int? = null,
     val episode: Int? = null,
     val positionSec: Double? = null,
+    val liked: Boolean = false,
+    val preview: Boolean = false,
 )
 
 @Serializable
@@ -84,6 +86,8 @@ data class MovieDetail(
     val overview: String? = null,
     val genres: List<String> = emptyList(),
     val runtimeSec: Double? = null,
+    val liked: Boolean = false,
+    val preview: Boolean = false,
 )
 
 @Serializable
@@ -158,3 +162,25 @@ data class SourceJob(
 
 @Serializable
 data class SourceJobsResponse(val jobs: List<SourceJob> = emptyList())
+
+@Serializable
+data class RandomResponse(val item: MediaCard)
+
+@Serializable
+data class DiscoverSource(
+    val backend: String,            // "archive" | "torrentio" | "direct" | "ytdlp"
+    val title: String,
+    val url: String? = null,        // either url or magnet is set
+    val magnet: String? = null,
+    val quality: String? = null,    // e.g. "1080p"
+    val sizeBytes: Long? = null,
+    val seeders: Int? = null,
+    val language: String? = null,
+    val provider: String? = null,
+)
+
+@Serializable
+data class DiscoverSourcesResponse(
+    val sources: List<DiscoverSource> = emptyList(),
+    val capabilities: Map<String, Boolean> = emptyMap(),
+)

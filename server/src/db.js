@@ -73,6 +73,7 @@ export async function prepareUserDb() {
   await db.episodes.createIndex({ sourceId: 1 }, { unique: true });
   await db.episodes.createIndex({ showId: 1, season: 1, episode: 1 });
   await db.episodes.createIndex({ addedAt: -1 });
+  await db.episodes.createIndex({ liked: 1, likedAt: -1 });
 
   await db.jobs.createIndex({ status: 1, priority: -1, createdAt: 1 });
   await db.jobs.createIndex({ sourceId: 1 });

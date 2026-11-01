@@ -85,6 +85,9 @@ h2:first-child { margin-top: 0; }
   background: rgba(0,0,0,.75); color: var(--text); font-size: 11px;
   padding: 2px 7px; border-radius: 999px;
 }
+.card .badge.heart {
+  left: 8px; right: auto; color: var(--accent); background: rgba(0,0,0,.75);
+}
 .card .title { margin-top: 8px; font-size: 14px; font-weight: 500; line-height: 1.3; }
 .card .sub { color: var(--muted); font-size: 12px; }
 .card .progress { height: 3px; background: var(--border); border-radius: 2px; margin-top: 6px; overflow: hidden; }

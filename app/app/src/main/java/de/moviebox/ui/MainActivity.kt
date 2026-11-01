@@ -18,6 +18,7 @@ import de.moviebox.ui.library.HomeTabs
 import de.moviebox.ui.library.MovieDetailScreen
 import de.moviebox.ui.library.SearchScreen
 import de.moviebox.ui.library.ShowDetailScreen
+import de.moviebox.ui.library.SourcesScreen
 import de.moviebox.ui.login.LoginScreen
 import de.moviebox.ui.player.PlayerScreen
 import de.moviebox.ui.theme.MovieBoxTheme
@@ -49,6 +50,10 @@ class MainActivity : ComponentActivity() {
                             },
                             onSearch = { navController.navigate("search") },
                             onAddUrl = { navController.navigate("add-url") },
+                            onOpenSources = { tmdbId, kind, title, year ->
+                                val t = Uri.encode(title)
+                                navController.navigate("sources/$tmdbId/$kind/$t?year=${year ?: ""}")
+                            },
                             onLogout = {
                                 SessionManager.clear()
                                 navController.navigate("login") {
@@ -59,6 +64,23 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("add-url") {
                         AddUrlScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(
+                        route = "sources/{tmdbId}/{kind}/{title}?year={year}",
+                        arguments = listOf(
+                            navArgument("tmdbId") { type = NavType.LongType },
+                            navArgument("kind") { type = NavType.StringType },
+                            navArgument("title") { type = NavType.StringType },
+                            navArgument("year") { type = NavType.StringType; defaultValue = "" },
+                        ),
+                    ) { entry ->
+                        SourcesScreen(
+                            tmdbId = entry.arguments?.getLong("tmdbId") ?: 0L,
+                            kind = entry.arguments?.getString("kind").orEmpty(),
+                            title = Uri.decode(entry.arguments?.getString("title").orEmpty()),
+                            year = entry.arguments?.getString("year")?.toIntOrNull(),
+                            onBack = { navController.popBackStack() },
+                        )
                     }
                     composable("search") {
                         SearchScreen(

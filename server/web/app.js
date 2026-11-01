@@ -94,6 +94,7 @@
       else if (view === 'shows') await renderShows(container);
       else if (view === 'discover') await renderDiscover(container);
       else if (view === 'search') await renderSearch(container, arg);
+      else if (view === 'favorites') await renderFavorites(container);
       else if (view === 'movie') await renderMovieDetail(container, arg);
       else if (view === 'show') await renderShowDetail(container, arg);
     } catch (err) {
@@ -109,6 +110,7 @@
     if (m.poster) poster.appendChild(el('img', { src: m.poster, loading: 'lazy', alt: m.title }));
     else poster.appendChild(el('div', { class: 'fallback' }, m.title));
     if (m.preview) poster.appendChild(el('div', { class: 'badge' }, 'PREVIEW'));
+    if (m.liked) poster.appendChild(el('div', { class: 'badge heart' }, '❤'));
     card.appendChild(poster);
     card.appendChild(el('div', { class: 'title' }, m.title));
     if (m.year) card.appendChild(el('div', { class: 'sub' }, String(m.year)));
@@ -125,6 +127,7 @@
     if (e.still) poster.appendChild(el('img', { src: e.still, loading: 'lazy', alt: e.title }));
     else poster.appendChild(el('div', { class: 'fallback' }, `S${e.season}E${e.episode}`));
     if (e.preview) poster.appendChild(el('div', { class: 'badge' }, 'PREVIEW'));
+    if (e.liked) poster.appendChild(el('div', { class: 'badge heart' }, '❤'));
     card.appendChild(poster);
     card.appendChild(el('div', { class: 'title' }, e.title || `Folge ${e.episode}`));
     card.appendChild(el('div', { class: 'sub' }, `${e.showTitle} · S${e.season}E${String(e.episode).padStart(2, '0')}`));
@@ -146,7 +149,7 @@
     return card;
   }
   function cardDiscover(r) {
-    const card = el('div', { class: 'card disc-card' });
+    const card = el('div', { class: 'card disc-card', onClick: () => openSourcesForTmdb(r) });
     const poster = el('div', { class: 'poster' });
     if (r.poster) poster.appendChild(el('img', { src: r.poster, loading: 'lazy', alt: r.title }));
     else poster.appendChild(el('div', { class: 'fallback' }, r.title));
@@ -158,6 +161,71 @@
     if (r.year) sub.push(r.year);
     card.appendChild(el('div', { class: 'sub' }, sub.join(' · ')));
     return card;
+  }
+
+  // ---------- "Quellen finden" dialog ----------
+  async function openSourcesForTmdb(tmdbItem) {
+    openModal(async (body) => {
+      body.appendChild(el('h2', {}, 'Quellen für „' + tmdbItem.title + '"'));
+      body.appendChild(el('p', { style: 'color:var(--muted);font-size:13px;margin:0 0 12px' },
+        'Alle backends werden gleichzeitig abgefragt. Torrents brauchen `webtorrent` auf dem server; archive.org läuft immer.'));
+
+      const spinner = el('div', { class: 'empty' }, 'Suche …');
+      body.appendChild(spinner);
+
+      const params = new URLSearchParams();
+      params.set('tmdbId', tmdbItem.tmdbId);
+      params.set('kind', tmdbItem.kind);
+      params.set('title', tmdbItem.title);
+      if (tmdbItem.year) params.set('year', tmdbItem.year);
+
+      let data;
+      try { data = await api('/discover/sources?' + params.toString()); }
+      catch (err) {
+        spinner.remove();
+        body.appendChild(el('div', { class: 'empty' }, 'Fehler: ' + err.message));
+        return;
+      }
+      spinner.remove();
+      if (!data.capabilities.torrent) {
+        body.appendChild(el('div', { class: 'empty', style: 'padding:12px;margin-bottom:12px' },
+          '⚠ Torrent-Backend nicht verfügbar (webtorrent nicht installiert). Nur Direkt-URLs und archive.org funktionieren.'));
+      }
+      if (!data.sources.length) {
+        body.appendChild(el('div', { class: 'empty' }, 'Keine Quellen gefunden.'));
+        return;
+      }
+      for (const src of data.sources) body.appendChild(sourceRow(src));
+    });
+  }
+
+  function sourceRow(src) {
+    const row = el('div', { class: 'row' });
+    const name = el('div', { class: 'name' });
+    const titleBits = [];
+    titleBits.push(src.title);
+    name.appendChild(el('div', { style: 'font-weight:500' }, src.title));
+    const sub = [];
+    sub.push(src.backend);
+    if (src.quality) sub.push(src.quality);
+    if (src.sizeBytes) sub.push((src.sizeBytes / 1_073_741_824).toFixed(2) + ' GB');
+    if (src.seeders !== null && src.seeders !== undefined) sub.push(src.seeders + ' seeders');
+    if (src.language) sub.push(src.language);
+    if (src.provider) sub.push(src.provider);
+    name.appendChild(el('div', { style: 'color:var(--muted);font-size:12px' }, sub.join(' · ')));
+    row.appendChild(name);
+    row.appendChild(el('button', { onClick: () => addSource(src, 'preview') }, 'Preview'));
+    row.appendChild(el('button', { class: 'primary', onClick: () => addSource(src, 'keep') }, 'Behalten'));
+    return row;
+  }
+
+  async function addSource(src, mode) {
+    const url = src.magnet || src.url;
+    if (!url) { toast('Keine URL für diese Quelle', 'err'); return; }
+    try {
+      await api('/sources/add', { method: 'POST', body: { url, mode } });
+      toast(mode === 'preview' ? '✓ Preview-Download läuft …' : '✓ Download läuft …', 'ok');
+    } catch (err) { toast(err.message, 'err'); }
   }
 
   // ---------- empty state ----------
@@ -309,6 +377,28 @@
     }
   }
 
+  async function renderFavorites(container) {
+    const { movies, episodes } = await api('/favorites');
+    container.innerHTML = '';
+    container.appendChild(el('h2', {}, 'Lieblinge'));
+    if (!movies.length && !episodes.length) {
+      container.appendChild(el('div', { class: 'empty' }, 'Noch keine Favoriten. Tippe im Detail-view eines Films oder einer Folge auf ❤.'));
+      return;
+    }
+    if (movies.length) {
+      container.appendChild(el('h2', {}, `Filme (${movies.length})`));
+      const g = el('div', { class: 'grid' });
+      for (const m of movies) g.appendChild(cardMovie(m));
+      container.appendChild(g);
+    }
+    if (episodes.length) {
+      container.appendChild(el('h2', {}, `Folgen (${episodes.length})`));
+      const g = el('div', { class: 'grid' });
+      for (const e of episodes) g.appendChild(cardEpisode(e));
+      container.appendChild(g);
+    }
+  }
+
   async function renderMovieDetail(container, id) {
     const { movie } = await api(`/movies/${id}`);
     const { positionSec } = await api(`/media/${id}/resume`);
@@ -324,11 +414,49 @@
     if (movie.runtimeSec) subBits.push(`${Math.round(movie.runtimeSec / 60)} min`);
     if (movie.genres?.length) subBits.push(movie.genres.join(', '));
     info.appendChild(el('div', { class: 'sub' }, subBits.join(' · ')));
+
+    const buttons = el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;align-items:center' });
     const playLabel = positionSec > 15 ? `Fortsetzen bei ${formatTime(positionSec)}` : 'Abspielen';
-    info.appendChild(el('button', { class: 'play', onClick: () => play({ id, title: movie.title, positionSec }) }, '▶  ' + playLabel));
+    buttons.appendChild(el('button', { class: 'play', onClick: () => play({ id, title: movie.title, positionSec }) }, '▶  ' + playLabel));
+    buttons.appendChild(likeButton(id, movie.liked));
+    buttons.appendChild(deleteButton(id, movie.title, () => nav('movies')));
+    info.appendChild(buttons);
+
     if (movie.overview) info.appendChild(el('p', { class: 'overview' }, movie.overview));
     wrap.appendChild(info);
     container.appendChild(wrap);
+  }
+
+  function likeButton(mediaId, initialLiked) {
+    const btn = el('button', { class: 'icon-btn', style: 'padding:12px 16px;border-radius:10px;background:transparent;color:var(--text);border:1px solid var(--border);cursor:pointer;font-size:16px' });
+    const render = (liked) => {
+      btn.textContent = liked ? '❤  Favorit' : '♡  Favorit';
+      btn.style.borderColor = liked ? 'var(--accent)' : 'var(--border)';
+      btn.style.color = liked ? 'var(--accent)' : 'var(--text)';
+      btn.dataset.liked = String(liked);
+    };
+    render(Boolean(initialLiked));
+    btn.addEventListener('click', async () => {
+      const next = btn.dataset.liked !== 'true';
+      try {
+        await api(`/media/${mediaId}/like`, { method: next ? 'POST' : 'DELETE' });
+        render(next);
+      } catch (err) { toast(err.message, 'err'); }
+    });
+    return btn;
+  }
+
+  function deleteButton(mediaId, label, onDone) {
+    const btn = el('button', { style: 'padding:12px 16px;border-radius:10px;background:transparent;color:var(--err);border:1px solid var(--err);cursor:pointer;font-size:16px' }, '🗑  Löschen');
+    btn.addEventListener('click', async () => {
+      if (!confirm(`"${label}" wirklich löschen? Die Datei im Medienordner wird mitgelöscht.`)) return;
+      try {
+        await api(`/media/${mediaId}`, { method: 'DELETE' });
+        toast('Gelöscht', 'ok');
+        onDone?.();
+      } catch (err) { toast(err.message, 'err'); }
+    });
+    return btn;
   }
 
   async function renderShowDetail(container, id) {
@@ -683,6 +811,14 @@
     if (e.key === 'Escape') { e.target.value = ''; nav('home'); }
   });
 
+  $('#random-btn').addEventListener('click', async () => {
+    try {
+      const data = await api('/random');
+      if (data.item.kind === 'episode') playEpisode(data.item);
+      else nav('movie', data.item.id);
+    } catch (err) { toast(err.message, 'err'); }
+  });
+  $('#favorites-btn').addEventListener('click', () => nav('favorites'));
   $('#url-btn').addEventListener('click', openUrlSource);
   $('#upload-btn').addEventListener('click', () => $('#file-picker').click());
   $('#scan-btn').addEventListener('click', triggerScan);

@@ -38,6 +38,7 @@ fun HomeTabs(
     onPlay: (String, String) -> Unit,
     onSearch: () -> Unit,
     onAddUrl: () -> Unit,
+    onOpenSources: (Long, String, String, Int?) -> Unit,
     onLogout: () -> Unit,
 ) {
     val tabs = listOf("Start", "Filme", "Serien", "Entdecken")
@@ -87,7 +88,7 @@ fun HomeTabs(
                         0 -> HomeScreen(onOpenMovie, onPlay, contentPad, refreshKey)
                         1 -> MoviesScreen(onOpenMovie, contentPad, refreshKey)
                         2 -> ShowsScreen(onOpenShow, contentPad, refreshKey)
-                        3 -> DiscoverScreen(contentPad, refreshKey)
+                        3 -> DiscoverScreen(contentPad, refreshKey, onOpenSources)
                     }
                 }
             }

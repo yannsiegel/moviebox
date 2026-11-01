@@ -1,6 +1,7 @@
 package de.moviebox.ui.library
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +46,11 @@ import de.moviebox.data.DiscoverItem
 import kotlinx.coroutines.delay
 
 @Composable
-fun DiscoverScreen(contentPad: PaddingValues, refreshKey: Int) {
+fun DiscoverScreen(
+    contentPad: PaddingValues,
+    refreshKey: Int,
+    onOpenSources: (Long, String, String, Int?) -> Unit = { _, _, _, _ -> },
+) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<DiscoverItem>?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -120,14 +125,14 @@ fun DiscoverScreen(contentPad: PaddingValues, refreshKey: Int) {
                     }
                 }
             busy -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            results != null -> DiscoverGrid(results!!)
+            results != null -> DiscoverGrid(results!!, onOpenSources)
             else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         }
     }
 }
 
 @Composable
-private fun DiscoverGrid(items: List<DiscoverItem>) {
+private fun DiscoverGrid(items: List<DiscoverItem>, onOpenSources: (Long, String, String, Int?) -> Unit) {
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Nichts gefunden.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -141,14 +146,16 @@ private fun DiscoverGrid(items: List<DiscoverItem>) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(items, key = { it.tmdbId.toString() + it.kind }) { it ->
-            DiscoverCard(it)
+            DiscoverCard(it) {
+                onOpenSources(it.tmdbId, it.kind, it.title, it.year?.toIntOrNull())
+            }
         }
     }
 }
 
 @Composable
-private fun DiscoverCard(item: DiscoverItem) {
-    Column(Modifier.fillMaxWidth()) {
+private fun DiscoverCard(item: DiscoverItem, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface),
             contentAlignment = Alignment.Center,

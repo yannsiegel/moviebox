@@ -18,14 +18,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,9 +57,11 @@ import de.moviebox.data.ShowDetail
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShowDetailScreen(showId: String, onBack: () -> Unit, onPlay: (String, String) -> Unit) {
+    val scope = rememberCoroutineScope()
     var show by remember { mutableStateOf<ShowDetail?>(null) }
     var seasons by remember { mutableStateOf<Map<String, List<MediaCard>>>(emptyMap()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var confirmingDelete by remember { mutableStateOf<MediaCard?>(null) }
 
     LaunchedEffect(showId) {
         error = null
@@ -60,6 +72,14 @@ fun ShowDetailScreen(showId: String, onBack: () -> Unit, onPlay: (String, String
         } catch (ex: Exception) {
             error = ex.message
         }
+    }
+
+    suspend fun refresh() {
+        try {
+            val resp = Api.service.show(showId)
+            show = resp.show
+            seasons = resp.seasons
+        } catch (_: Exception) {}
     }
 
     Scaffold(
@@ -98,17 +118,52 @@ fun ShowDetailScreen(showId: String, onBack: () -> Unit, onPlay: (String, String
                 Text("Staffel $seasonLabel", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 for (ep in eps) {
-                    EpisodeRow(ep = ep, onPlay = { onPlay(ep.id, episodeLabel(ep)) })
+                    EpisodeRow(
+                        ep = ep,
+                        onPlay = { onPlay(ep.id, episodeLabel(ep)) },
+                        onToggleLike = {
+                            scope.launch {
+                                try {
+                                    if (ep.liked) Api.service.unlikeMedia(ep.id) else Api.service.likeMedia(ep.id)
+                                    refresh()
+                                } catch (_: Exception) {}
+                            }
+                        },
+                        onDelete = { confirmingDelete = ep },
+                    )
                     Spacer(Modifier.height(8.dp))
                 }
                 Spacer(Modifier.height(16.dp))
             }
         }
     }
+
+    confirmingDelete?.let { ep ->
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = null },
+            title = { Text("Folge löschen?") },
+            text = { Text("S${ep.season}E${ep.episode}: ${ep.title}") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val id = ep.id
+                    confirmingDelete = null
+                    scope.launch {
+                        try { Api.service.deleteMedia(id); refresh() } catch (_: Exception) {}
+                    }
+                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmingDelete = null }) { Text("Abbrechen") } },
+        )
+    }
 }
 
 @Composable
-private fun EpisodeRow(ep: MediaCard, onPlay: () -> Unit) {
+private fun EpisodeRow(
+    ep: MediaCard,
+    onPlay: () -> Unit,
+    onToggleLike: () -> Unit,
+    onDelete: () -> Unit,
+) {
     Row(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -124,6 +179,18 @@ private fun EpisodeRow(ep: MediaCard, onPlay: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text("S${ep.season}E${ep.episode?.toString()?.padStart(2, '0')}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
             Text(ep.title.ifEmpty { "Folge ${ep.episode}" }, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row {
+                IconButton(onClick = onToggleLike, modifier = Modifier.width(36.dp)) {
+                    Icon(
+                        if (ep.liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = "Favorit",
+                        tint = if (ep.liked) Color(0xFFE94560) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onDelete, modifier = Modifier.width(36.dp)) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Löschen", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }

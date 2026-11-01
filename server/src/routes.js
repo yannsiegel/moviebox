@@ -4,6 +4,8 @@
 // Stage 2 (this file): library (movies, shows, episodes), streaming, resume positions, "Weiter schauen",
 // a manual "scan now" and job status for the admin.
 
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import express from 'express';
 import { db, serialize, toObjectId } from './db.js';
 import { AuthError, acceptInvite, createInvite, createUser, deleteUser, listUsers, login, logout, publicUser, rotateServerToken, setPassword, updateProfile, userForToken } from './users.js';
@@ -14,7 +16,7 @@ import { findMedia, serveMedia } from './stream.js';
 import { receiveUpload } from './uploads.js';
 import { isConfigured as tmdbEnabled, multiSearch, normalizeTmdb, trending } from './tmdb.js';
 import { events } from './events.js';
-import { probe as probeSource } from './sources/index.js';
+import { capabilities as sourceCapabilities, probe as probeSource, searchSources } from './sources/index.js';
 
 export const api = express.Router();
 api.use(express.json({ limit: '1mb' }));
@@ -106,13 +108,17 @@ api.post('/me/invite', handle(async (req, res) => {
 /** Compact movie/episode shape for list views. */
 function listMovie(m) {
   const s = serialize(m);
-  return { id: s.id, title: s.title, year: s.year, poster: s.poster, runtimeSec: s.runtimeSec, addedAt: s.addedAt, kind: 'movie' };
+  return {
+    id: s.id, title: s.title, year: s.year, poster: s.poster, runtimeSec: s.runtimeSec, addedAt: s.addedAt,
+    kind: 'movie', liked: Boolean(s.liked), preview: Boolean(s.preview),
+  };
 }
 function listEpisode(e) {
   const s = serialize(e);
   return {
     id: s.id, showId: String(s.showId), showTitle: s.showTitle, season: s.season, episode: s.episode,
     title: s.title, still: s.still, runtimeSec: s.runtimeSec, addedAt: s.addedAt, kind: 'episode',
+    liked: Boolean(s.liked), preview: Boolean(s.preview),
   };
 }
 function listShow(s) {
@@ -194,6 +200,22 @@ api.get('/discover/trending', handle(async (_req, res) => {
   res.json({ results: hits.slice(0, 20).map(normalizeTmdb) });
 }));
 
+/**
+ * "Quellen finden" - aggregates every backend that supports search (archive.org by free text,
+ * TorrentIO by TMDB/IMDB id). Pass tmdbId + kind for the richest results; title is the fallback.
+ */
+api.get('/discover/sources', handle(async (req, res) => {
+  const tmdbId = req.query.tmdbId ? Number(req.query.tmdbId) : null;
+  const kind = req.query.kind ? String(req.query.kind) : null;
+  const season = req.query.season ? Number(req.query.season) : null;
+  const episode = req.query.episode ? Number(req.query.episode) : null;
+  const title = req.query.title ? String(req.query.title) : null;
+  const year = req.query.year ? Number(req.query.year) : null;
+  const sources = await searchSources({ tmdbId, kind, season, episode, title, year });
+  const caps = await sourceCapabilities();
+  res.json({ sources, capabilities: caps });
+}));
+
 // "Weiter schauen" + "Neu hinzugefügt" for the home screen.
 api.get('/home', handle(async (_req, res) => {
   const [resume, recentMovies, recentEpisodes] = await Promise.all([
@@ -230,6 +252,76 @@ api.get('/media/:id/subtitles/:index', handle(async (req, res) => {
   const sub = item.subtitles?.[Number(req.params.index)];
   if (!sub) return res.status(404).json({ error: 'Untertitel nicht gefunden' });
   res.sendFile(sub.file);
+}));
+
+// ---------- ownership: favorites, random, delete ----------
+
+/** Toggle the ❤️ flag on a movie or episode. */
+async function setLiked(req, res, liked) {
+  const _id = toObjectId(req.params.id);
+  if (!_id) return res.status(400).json({ error: 'Ungültige ID' });
+  const now = liked ? new Date() : null;
+  const update = { $set: { liked, likedAt: now } };
+  const r1 = await db.movies.updateOne({ _id }, update);
+  if (r1.matchedCount === 0) await db.episodes.updateOne({ _id }, update);
+  res.json({ ok: true, liked });
+}
+api.post('/media/:id/like', handle((req, res) => setLiked(req, res, true)));
+api.delete('/media/:id/like', handle((req, res) => setLiked(req, res, false)));
+
+/** List of liked movies and episodes, newest-liked first. */
+api.get('/favorites', handle(async (_req, res) => {
+  const [movies, episodes] = await Promise.all([
+    db.movies.find({ liked: true }).sort({ likedAt: -1 }).limit(200).toArray(),
+    db.episodes.find({ liked: true }).sort({ likedAt: -1 }).limit(200).toArray(),
+  ]);
+  res.json({ movies: movies.map(listMovie), episodes: episodes.map(listEpisode) });
+}));
+
+/** Pick a random movie or episode. Great for the "spiel mir irgendwas" button. */
+api.get('/random', handle(async (req, res) => {
+  const kind = String(req.query.kind || 'any');
+  const pipeline = [{ $sample: { size: 1 } }];
+  let item = null;
+  if (kind === 'movie' || kind === 'any') {
+    item = (await db.movies.aggregate(pipeline).toArray())[0];
+    if (item) return res.json({ item: { ...listMovie(item), kind: 'movie' } });
+  }
+  if (kind === 'episode' || kind === 'any') {
+    item = (await db.episodes.aggregate(pipeline).toArray())[0];
+    if (item) return res.json({ item: { ...listEpisode(item), kind: 'episode' } });
+  }
+  res.status(404).json({ error: 'Noch keine Inhalte' });
+}));
+
+/** Delete a movie or episode: removes the file AND the DB row. The scanner would otherwise
+ *  recreate the row on its next tick, so file-first then row keeps things clean. */
+api.delete('/media/:id', handle(async (req, res) => {
+  const _id = toObjectId(req.params.id);
+  if (!_id) return res.status(400).json({ error: 'Ungültige ID' });
+
+  let doc = await db.movies.findOne({ _id });
+  let collection = db.movies;
+  let kind = 'movie';
+  if (!doc) {
+    doc = await db.episodes.findOne({ _id });
+    collection = db.episodes;
+    kind = 'episode';
+  }
+  if (!doc) return res.status(404).json({ error: 'Nicht gefunden' });
+
+  const absolute = path.join(req.tenant.videoDir, doc.path);
+  await fs.rm(absolute, { force: true }).catch((err) => console.warn(`Löschen von ${absolute}: ${err.message}`));
+  await collection.deleteOne({ _id });
+  await db.jobs.deleteMany({ sourceId: doc.sourceId });
+  await db.resume.deleteOne({ mediaId: _id }).catch(() => {});
+
+  // if this was the last episode of a show, drop the show row too
+  if (kind === 'episode') {
+    const left = await db.episodes.countDocuments({ showId: doc.showId });
+    if (left === 0) await db.shows.deleteOne({ _id: doc.showId });
+  }
+  res.json({ ok: true });
 }));
 
 api.get('/media/:id/resume', handle(async (req, res) => {

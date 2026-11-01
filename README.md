@@ -12,15 +12,20 @@ Als Vorbild dient [TuneBox](https://github.com/yannsiegel/tunebox) – der Grund
                           └──── liefert Videodateien direkt aus (X-Accel-Redirect)
 ```
 
-## Funktionen (Stufe 2.2 – aktueller Stand)
+## Funktionen (Stufe 2.3 – aktueller Stand)
 
 - **Ordner-Scanner**: Legt du eine Videodatei nach `/srv/moviebox/media/`, taucht sie innerhalb weniger Minuten in der Bibliothek auf. Umbenennen oder Löschen wirkt genauso.
 - **Upload direkt per Web und App**: Drag & Drop ins browserfenster oder Taste in der oberen Leiste. Die Datei landet im Medienordner, der Scanner holt sie sofort rein.
 - **URL-Downloads** (⁺-Taste in Web und App): YouTube, Vimeo, Archive.org, BBC, ARD, ZDF, Arte und etwa 1.800 weitere Seiten über **yt-dlp**; direkte `.mp4`/`.mkv`-Links werden ohne Umweg geladen. Zwei Modi:
   - **Behalten:** Download landet dauerhaft in der Bibliothek.
   - **Nur einmal schauen (Preview):** Download in `preview/`, wird nach 48 h (konfigurierbar) automatisch gelöscht. Zum einmaligen Streamen gedacht.
+- **Quellen-Aggregator**: Tippst du im „Entdecken"-Tab auf einen Film oder eine Serie, zeigt MovieBox dir alle verfügbaren Quellen auf einen Blick: **archive.org** (public-domain), **TorrentIO** (DHT-magnet-links, nach Qualität und Seedern sortiert), **yt-dlp**-Direktlinks. Preview oder Behalten direkt pro Quelle wählbar.
+- **Torrent-Download** über **webtorrent** (in-process, kein externer qBittorrent nötig). Magnet-link reinwerfen → MovieBox lädt direkt in deinen Medienordner.
 - **Suche** über die lokale Bibliothek (Filme, Serien, Folgen) mit Sofort-Ergebnissen.
-- **„Entdecken"-Tab**: TMDB-Suche und wöchentliche Trends als Ideen-Fundus – zeigt was es gibt, auch wenn du's noch nicht hast.
+- **„Entdecken"-Tab**: TMDB-Suche und wöchentliche Trends als Ideen-Fundus.
+- **Favoriten** (❤): markiere Filme oder Folgen, siehe sie unter „Lieblinge".
+- **Zufall** (🎲): „Spiel mir irgendwas aus meiner Bibliothek".
+- **Löschen** per Button im Detail-view: entfernt die Datei und den DB-Eintrag.
 - **Admin-Bereich** im Web (⚙): Konten anlegen und löschen, Status mit Job-Zahlen, Scan auslösen, Server-Token rotieren.
 - **Automatische Metadaten** von TMDB: Poster, Backdrops, Beschreibungen, Originaltitel, Veröffentlichungsjahr, Genres, Episoden-Titel und -Bilder. Ohne TMDB-Key funktioniert die Bibliothek weiter – nur mit Datei-Namen als Titel.
 - **Serien-Erkennung** aus Dateinamen: `S01E02`, `1x02`, Ordnerstruktur `Serie/Season 1/02 - Titel.mkv`.

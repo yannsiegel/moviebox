@@ -147,7 +147,13 @@ Dann **Hinzufügen**. Der downloader läuft im hintergrund, du siehst live den f
 
 Die haltezeit für preview-dateien steht in `/opt/moviebox/server/.env` als `PREVIEW_KEEP_HOURS=48` – kannst du ändern, dann `sudo systemctl restart moviebox`.
 
-**Entdecken-Tab** – zeigt wöchentliche TMDB-trends und eine suche über TMDB. Herunterladen daraus geht nicht – aber du siehst was es gibt, wie der titel bei TMDB heißt (hilft beim benennen deiner dateien) und ob's als film oder serie geführt wird.
+**Entdecken-Tab** – zeigt wöchentliche TMDB-trends und eine suche über TMDB. **Tipp auf einen treffer** → modal „Quellen für …" öffnet sich und sucht parallel bei archive.org (public-domain) und TorrentIO (DHT-magnet-links). Jede quelle hat „Preview" (48 h) oder „Behalten". Torrent-downloads laufen direkt im moviebox-prozess über webtorrent – kein externes qBittorrent nötig.
+
+**Favoriten** – ❤-icon im detail-view toggelt den favoriten-status. Die „Lieblinge"-ansicht erreichst du über das ❤-icon in der topleiste (web).
+
+**Zufall** – 🎲-icon in der topleiste (web) wählt dir einen zufälligen film oder eine zufällige folge aus deiner bibliothek.
+
+**Löschen** – 🗑-button im detail-view. Löscht die videodatei im medienordner und den datenbank-eintrag.
 
 **Admin (⚙ im Web)** – konten anlegen und löschen, status mit job-zahlen (wie viele filme/serien, wie viele im scan, uptime), scan sofort auslösen, server-token rotieren.
 
@@ -191,3 +197,8 @@ Alle authentifizierten Endpoints erwarten `Authorization: Bearer <token>` oder b
 | `POST` | `/api/sources/add` | URL in die download-queue stellen (`{url, mode: "keep"\|"preview"}`). |
 | `GET`  | `/api/sources/jobs` | Laufende und letzte URL-downloads mit fortschritt. |
 | `DELETE` | `/api/sources/jobs/:id` | Download-job entfernen. |
+| `GET`  | `/api/discover/sources?tmdbId=&kind=&title=&year=` | Alle quellen aus archive.org + TorrentIO für einen TMDB-treffer. |
+| `POST` | `/api/media/:id/like`, `DELETE /api/media/:id/like` | Favorit setzen/aufheben. |
+| `GET`  | `/api/favorites` | Alle favorisierten filme + folgen. |
+| `GET`  | `/api/random?kind=movie\|episode\|any` | Zufälligen titel aus der bibliothek. |
+| `DELETE` | `/api/media/:id` | Film oder folge löschen (inkl. datei). |
