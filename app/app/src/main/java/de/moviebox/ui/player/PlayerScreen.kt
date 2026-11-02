@@ -26,6 +26,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import android.app.Activity
+import android.view.View
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -61,6 +69,32 @@ import kotlinx.coroutines.launch
 fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit, onPlayNext: (String, String) -> Unit = { _, _ -> }) {
     val context = LocalContext.current
     val streamUrl = remember(mediaId) { Api.streamUrl(mediaId) }
+
+    // Immersive fullscreen: hide status + navigation bars while the player is open,
+    // swipe-from-edge still reveals them. Restores on dispose so the rest of the app
+    // sees the normal insets again.
+    DisposableEffect(Unit) {
+        val activity = context as? Activity
+        val window = activity?.window
+        if (window != null) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            if (window != null) {
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+                WindowInsetsControllerCompat(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    // Title + close-button follow the player's own controller visibility, so they
+    // auto-hide together with the playback controls after a few seconds.
+    var showChrome by remember { mutableStateOf(true) }
     // scope kept alive for the final resume write on exit
     val finalScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
     var nextEpisode by remember { mutableStateOf<MediaCard?>(null) }
@@ -163,29 +197,47 @@ fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit, onPlayNext
                 PlayerView(ctx).apply {
                     this.player = player
                     useController = true
-                    // Media3's built-in subtitle button and settings menu let the user
-                    // switch between audio tracks and embedded/sidecar subtitles.
                     setShowSubtitleButton(true)
                     setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                    // Mirror the built-in controller's show/hide to our Compose overlay chrome.
+                    setControllerVisibilityListener(
+                        PlayerView.ControllerVisibilityListener { visibility ->
+                            showChrome = visibility == View.VISIBLE
+                        },
+                    )
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 }
             },
             modifier = Modifier.fillMaxSize(),
         )
-        Text(
-            title,
-            color = Color.White,
-            modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color(0x99000000)).padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        IconButton(
-            onClick = {
-                player.stop()
-                onClose()
-            },
-            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(44.dp).background(Color(0x99000000), CircleShape),
+        AnimatedVisibility(
+            visible = showChrome,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopStart),
         ) {
-            Icon(Icons.Filled.Close, contentDescription = "Schließen", tint = Color.White)
+            Text(
+                title,
+                color = Color.White,
+                modifier = Modifier.padding(16.dp).background(Color(0x99000000)).padding(horizontal = 10.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        AnimatedVisibility(
+            visible = showChrome,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd),
+        ) {
+            IconButton(
+                onClick = {
+                    player.stop()
+                    onClose()
+                },
+                modifier = Modifier.padding(12.dp).size(44.dp).background(Color(0x99000000), CircleShape),
+            ) {
+                Icon(Icons.Filled.Close, contentDescription = "Schließen", tint = Color.White)
+            }
         }
 
         // Full-screen diagnostic overlay when playback can't start / crashes
