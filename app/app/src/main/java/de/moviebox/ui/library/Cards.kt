@@ -10,19 +10,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import de.moviebox.data.MediaCard
+import de.moviebox.data.ResumeCache
 import de.moviebox.data.ShowSummary
 
 @Composable
@@ -31,8 +40,13 @@ fun PosterCard(
     subtitle: String?,
     poster: String?,
     progressFraction: Float? = null,
+    mediaId: String? = null,
     onClick: () -> Unit,
 ) {
+    // read resume state only once per recomposition; cheap, in-memory
+    val resumeRows by ResumeCache.rows.collectAsState()
+    val completed = mediaId != null && resumeRows[mediaId]?.completed == true
+
     Column(
         modifier = Modifier.clickable(onClick = onClick).padding(4.dp),
     ) {
@@ -49,8 +63,17 @@ fun PosterCard(
             } else {
                 Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(10.dp))
             }
+            if (completed) {
+                Box(
+                    Modifier.align(Alignment.BottomStart).padding(6.dp).size(20.dp)
+                        .background(Color(0xFF4ADE80), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Check, contentDescription = "Gesehen", tint = Color(0xFF0B0D10), modifier = Modifier.size(14.dp))
+                }
+            }
         }
-        if (progressFraction != null && progressFraction > 0f) {
+        if (!completed && progressFraction != null && progressFraction > 0f) {
             Spacer(Modifier.height(4.dp))
             Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surface)) {
                 Box(Modifier.fillMaxWidth(progressFraction.coerceAtMost(1f)).fillMaxSize().background(MaterialTheme.colorScheme.primary))

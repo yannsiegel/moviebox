@@ -77,6 +77,7 @@ interface MovieBoxService {
     @POST("sources/resolve") suspend fun sourcesResolve(@Body body: Map<String, String>): ResolveResponse
     @POST("sources/add") suspend fun sourcesAdd(@Body body: SourceAddRequest): AddJobResponse
     @GET("sources/jobs") suspend fun sourcesJobs(): SourceJobsResponse
+    @retrofit2.http.DELETE("sources/jobs/{id}") suspend fun sourcesJobsDelete(@Path("id") id: String): Map<String, Boolean>
 
     @POST("media/{id}/like") suspend fun likeMedia(@Path("id") id: String): Map<String, Boolean>
     @retrofit2.http.DELETE("media/{id}/like") suspend fun unlikeMedia(@Path("id") id: String): Map<String, Boolean>
@@ -84,6 +85,8 @@ interface MovieBoxService {
     @GET("favorites") suspend fun favorites(): SearchResponse
     @GET("random") suspend fun random(): RandomResponse
     @GET("episodes/{id}/next") suspend fun episodeNext(@Path("id") id: String): NextEpisodeResponse
+    @GET("library/summary") suspend fun librarySummary(): LibrarySummary
+    @GET("me/resume") suspend fun meResume(): ResumeResponse
 
     @POST("shows/{id}/subscribe") suspend fun subscribeShow(@Path("id") id: String): Map<String, Boolean>
     @retrofit2.http.DELETE("shows/{id}/subscribe") suspend fun unsubscribeShow(@Path("id") id: String): Map<String, Boolean>

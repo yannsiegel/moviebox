@@ -52,6 +52,7 @@ fun MoviesScreen(onOpenMovie: (String) -> Unit, contentPad: PaddingValues, refre
                 subtitle = m.subtitleLabel(),
                 poster = m.poster,
                 progressFraction = m.progressFraction(),
+                mediaId = m.id,
                 onClick = { onOpenMovie(m.id) },
             )
         }

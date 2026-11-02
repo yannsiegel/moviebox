@@ -168,6 +168,15 @@ data class SourceJobsResponse(val jobs: List<SourceJob> = emptyList())
 data class RandomResponse(val item: MediaCard)
 
 @Serializable
+data class LibrarySummary(val movies: Int = 0, val shows: Int = 0, val episodes: Int = 0)
+
+@Serializable
+data class ResumeRow(val mediaId: String, val positionSec: Double = 0.0, val completed: Boolean = false)
+
+@Serializable
+data class ResumeResponse(val rows: List<ResumeRow> = emptyList())
+
+@Serializable
 data class DiscoverSource(
     val backend: String,            // "archive" | "torrentio" | "direct" | "ytdlp"
     val title: String,

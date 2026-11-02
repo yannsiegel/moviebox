@@ -13,12 +13,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import de.moviebox.data.SessionManager
+import androidx.compose.runtime.rememberCoroutineScope
+import de.moviebox.data.Api
 import de.moviebox.ui.library.AddUrlScreen
+import de.moviebox.ui.library.DownloadsScreen
 import de.moviebox.ui.library.HomeTabs
 import de.moviebox.ui.library.MovieDetailScreen
 import de.moviebox.ui.library.SearchScreen
 import de.moviebox.ui.library.ShowDetailScreen
 import de.moviebox.ui.library.SourcesScreen
+import kotlinx.coroutines.launch
 import de.moviebox.ui.login.LoginScreen
 import de.moviebox.ui.player.PlayerScreen
 import de.moviebox.ui.theme.MovieBoxTheme
@@ -31,6 +35,7 @@ class MainActivity : ComponentActivity() {
             MovieBoxTheme {
                 val state by SessionManager.state.collectAsState()
                 val navController = rememberNavController()
+                val scope = rememberCoroutineScope()
                 val start = if (state.token.isNotEmpty() && state.baseUrl.isNotEmpty()) "home" else "login"
                 NavHost(navController = navController, startDestination = start) {
                     composable("login") {
@@ -54,6 +59,21 @@ class MainActivity : ComponentActivity() {
                                 val t = Uri.encode(title)
                                 navController.navigate("sources/$tmdbId/$kind/$t?year=${year ?: ""}")
                             },
+                            onOpenDownloads = { navController.navigate("downloads") },
+                            onRandom = {
+                                scope.launch {
+                                    try {
+                                        val item = Api.service.random().item
+                                        if (item.kind == "episode") {
+                                            val label = "${item.showTitle} · S${item.season}E${item.episode?.toString()?.padStart(2, '0')}"
+                                            val t = Uri.encode(label)
+                                            navController.navigate("player/${item.id}?title=$t")
+                                        } else {
+                                            navController.navigate("movie/${item.id}")
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                            },
                             onLogout = {
                                 SessionManager.clear()
                                 navController.navigate("login") {
@@ -64,6 +84,9 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("add-url") {
                         AddUrlScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable("downloads") {
+                        DownloadsScreen(onBack = { navController.popBackStack() })
                     }
                     composable(
                         route = "sources/{tmdbId}/{kind}/{title}?year={year}",

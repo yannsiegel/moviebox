@@ -1,13 +1,18 @@
 package de.moviebox.ui.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.moviebox.data.Api
 import de.moviebox.data.HomeResponse
+import de.moviebox.data.LibrarySummary
+import de.moviebox.data.ResumeCache
 
 @Composable
 fun HomeScreen(
@@ -33,12 +40,16 @@ fun HomeScreen(
     refreshKey: Int,
 ) {
     var data by remember { mutableStateOf<HomeResponse?>(null) }
+    var summary by remember { mutableStateOf<LibrarySummary?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(refreshKey) {
         error = null
-        try { data = Api.service.home() }
-        catch (ex: Exception) { error = ex.message }
+        try {
+            data = Api.service.home()
+            summary = try { Api.service.librarySummary() } catch (_: Exception) { null }
+            ResumeCache.refresh()
+        } catch (ex: Exception) { error = ex.message }
     }
 
     val d = data
@@ -66,6 +77,13 @@ fun HomeScreen(
     androidx.compose.foundation.layout.Column(
         Modifier.fillMaxSize().padding(contentPad).verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
+        summary?.let { s ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 16.dp)) {
+                StatChip("Filme", s.movies)
+                StatChip("Serien", s.shows)
+                StatChip("Folgen", s.episodes)
+            }
+        }
         if (d.`continue`.isNotEmpty()) {
             SectionTitle("Weiter schauen")
             MediaGrid(d.`continue`, onOpenMovie, onPlay)
@@ -89,6 +107,20 @@ private fun SectionTitle(label: String) {
 }
 
 @Composable
+private fun StatChip(label: String, value: Int) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(999.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.width(6.dp))
+        Text(value.toString(), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
 fun MediaGrid(
     items: List<de.moviebox.data.MediaCard>,
     onOpenMovie: (String) -> Unit,
@@ -107,6 +139,7 @@ fun MediaGrid(
                             subtitle = item.subtitleLabel(),
                             poster = item.poster ?: item.still,
                             progressFraction = item.progressFraction(),
+                            mediaId = item.id,
                             onClick = {
                                 if (item.kind == "episode") onPlay(item.id, label(item))
                                 else onOpenMovie(item.id)
