@@ -52,8 +52,12 @@ export async function serveMedia(req, res, item) {
     // X-Accel-Redirect expects a URL-path, so each path segment must be URI-encoded
     // (spaces, parens, brackets - all common in torrent folder names). Slashes stay.
     const encodedPath = item.path.split('/').map(encodeURIComponent).join('/');
+    // nginx `alias` points at mediaDir (/srv/moviebox/media/), but item.path is relative
+    // to videoDir (which is mediaDir/video/). Compute the subdir and prepend it so the
+    // final URL maps to the real file on disk.
+    const videoSubdir = path.posix.relative(req.tenant.mediaDir, req.tenant.videoDir);
     res.set('Content-Type', type);
-    res.set('X-Accel-Redirect', path.posix.join(config.accelRedirectPrefix, encodedPath));
+    res.set('X-Accel-Redirect', path.posix.join(config.accelRedirectPrefix, videoSubdir, encodedPath));
     res.set('Accept-Ranges', 'bytes');
     res.end();
     return;
