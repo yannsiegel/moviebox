@@ -11,20 +11,28 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { VIDEO_EXTENSIONS } from '../parse-filename.js';
 
-/** Public BitTorrent trackers to add to every magnet - several of the magnets we get
- *  from TorrentIO only carry a few trackers, which is often the reason webtorrent sits
- *  at 0% forever. These are the long-running public ones used by every mainstream client. */
+/** Public BitTorrent trackers to add to every magnet. Mix of UDP (BitTorrent-standard),
+ *  HTTP (works even when the provider blocks UDP outbound - common on cheap VPS), and
+ *  WSS/WebSocket trackers (webtorrent's native WebRTC peers). Several of each so a magnet
+ *  can find peers over whichever transport the server actually gets through. */
 const PUBLIC_TRACKERS = [
+  // UDP
   'udp://tracker.opentrackr.org:1337/announce',
   'udp://open.stealth.si:80/announce',
   'udp://tracker.openbittorrent.com:6969/announce',
   'udp://exodus.desync.com:6969/announce',
   'udp://tracker.torrent.eu.org:451/announce',
-  'udp://tracker.moeking.me:6969/announce',
-  'udp://explodie.org:6969/announce',
-  'udp://tracker.dler.org:6969/announce',
   'udp://opentracker.i2p.rocks:6969/announce',
   'udp://tracker.tiny-vps.com:6969/announce',
+  // HTTP(S) - fallback for UDP-blocked networks
+  'http://tracker.opentrackr.org:1337/announce',
+  'https://tracker.gbitt.info/announce',
+  'https://tracker1.520.jp:443/announce',
+  'http://tracker.openbittorrent.com:80/announce',
+  // WSS - WebRTC peers via webtorrent's own tracker network
+  'wss://tracker.openwebtorrent.com',
+  'wss://tracker.btorrent.xyz',
+  'wss://tracker.webtorrent.dev',
 ];
 
 const STALL_TIMEOUT_MS = 5 * 60_000;   // 5 min at 0 % and no peers -> give up on this magnet
