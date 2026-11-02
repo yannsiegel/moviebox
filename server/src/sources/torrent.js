@@ -11,6 +11,24 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { VIDEO_EXTENSIONS } from '../parse-filename.js';
 
+/** Public BitTorrent trackers to add to every magnet - several of the magnets we get
+ *  from TorrentIO only carry a few trackers, which is often the reason webtorrent sits
+ *  at 0% forever. These are the long-running public ones used by every mainstream client. */
+const PUBLIC_TRACKERS = [
+  'udp://tracker.opentrackr.org:1337/announce',
+  'udp://open.stealth.si:80/announce',
+  'udp://tracker.openbittorrent.com:6969/announce',
+  'udp://exodus.desync.com:6969/announce',
+  'udp://tracker.torrent.eu.org:451/announce',
+  'udp://tracker.moeking.me:6969/announce',
+  'udp://explodie.org:6969/announce',
+  'udp://tracker.dler.org:6969/announce',
+  'udp://opentracker.i2p.rocks:6969/announce',
+  'udp://tracker.tiny-vps.com:6969/announce',
+];
+
+const STALL_TIMEOUT_MS = 5 * 60_000;   // 5 min at 0 % and no peers -> give up on this magnet
+
 let _client = null;
 let _loadError = null;
 let _globalGuardInstalled = false;
@@ -80,38 +98,63 @@ export async function download(magnetOrUrl, targetDir, { onProgress } = {}) {
   return new Promise((resolve, reject) => {
     let torrent;
     try {
-      torrent = c.add(magnetOrUrl, { path: targetDir, destroyStoreOnDestroy: false });
+      // Add all public trackers in parallel so peer discovery doesn't rely on
+      // whatever handful of trackers the magnet shipped with.
+      torrent = c.add(magnetOrUrl, {
+        path: targetDir,
+        destroyStoreOnDestroy: false,
+        announce: PUBLIC_TRACKERS,
+      });
     } catch (err) {
       return reject(new Error(`webtorrent.add warf: ${err.message}`));
     }
     if (!torrent) return reject(new Error('webtorrent.add gab kein torrent zurück'));
 
+    const started = Date.now();
+    let settled = false;
+    const fail = (msg) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(progressTimer);
+      try { torrent.destroy({ destroyStore: true }, () => {}); } catch {}
+      reject(new Error(msg));
+    };
+    const succeed = (val) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(progressTimer);
+      resolve(val);
+    };
+
     const progressTimer = setInterval(() => {
+      // stall guard: no bytes received after STALL_TIMEOUT_MS -> no peers, give up
+      if (torrent.progress === 0 && torrent.numPeers === 0 && Date.now() - started > STALL_TIMEOUT_MS) {
+        return fail('Keine peers nach 5 min – torrent tot?');
+      }
       if (!onProgress) return;
       onProgress({
         pct: Math.round(torrent.progress * 10000) / 100,
         speed: `${(torrent.downloadSpeed / 1_048_576).toFixed(2)} MB/s`,
-        eta: isFinite(torrent.timeRemaining) ? `${Math.round(torrent.timeRemaining / 1000)}s` : null,
-        size: `${(torrent.length / 1_073_741_824).toFixed(2)} GB`,
+        eta: isFinite(torrent.timeRemaining) && torrent.timeRemaining > 0 ? `${Math.round(torrent.timeRemaining / 1000)}s` : null,
+        size: torrent.length ? `${(torrent.length / 1_073_741_824).toFixed(2)} GB` : null,
+        peers: torrent.numPeers,
       });
-    }, 1000);
+    }, 1500);
 
-    torrent.on('error', (err) => {
-      clearInterval(progressTimer);
-      reject(new Error(`Torrent-Fehler: ${err.message || err}`));
-    });
+    torrent.on('error', (err) => fail(`Torrent-Fehler: ${err.message || err}`));
+    torrent.on('warning', (err) => console.warn(`[torrent] warning: ${err?.message || err}`));
 
     torrent.on('done', async () => {
-      clearInterval(progressTimer);
       // pick the largest video file from the torrent
       const videoFiles = torrent.files
         .filter((f) => VIDEO_EXTENSIONS.has(path.extname(f.name).toLowerCase()))
         .sort((a, b) => b.length - a.length);
       const picked = videoFiles[0] || torrent.files.sort((a, b) => b.length - a.length)[0];
+      if (!picked) return fail('Torrent fertig, aber keine video-datei drin');
       const resultPath = path.join(targetDir, picked.path);
       // keep seeding briefly to be nice; then detach (files stay)
       setTimeout(() => torrent.destroy({ destroyStore: false }, () => {}), 30_000);
-      resolve({ path: resultPath });
+      succeed({ path: resultPath });
     });
   });
 }

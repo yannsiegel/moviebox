@@ -106,6 +106,7 @@
           if (j.payload?.mode === 'preview') meta.appendChild(el('span', {}, 'preview'));
           if (j.progress?.pct !== undefined) meta.appendChild(el('span', {}, j.progress.pct.toFixed(1) + ' %'));
           if (j.progress?.speed) meta.appendChild(el('span', {}, j.progress.speed));
+          if (j.progress?.peers !== undefined) meta.appendChild(el('span', {}, j.progress.peers + ' peers'));
           row.appendChild(meta);
           if (j.progress?.pct !== undefined && j.status !== 'done' && j.status !== 'failed') {
             const bar = el('div', { class: 'bar' });
