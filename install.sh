@@ -77,8 +77,8 @@ fi
 ok "MongoDB erreichbar ($mongo_host:$mongo_port)"
 
 # ------------------------------------------------------------------ Pakete
-step "Installiere Pakete (ffmpeg, qrencode$([[ -n "$DOMAIN" ]] && echo ", certbot"))"
-packages=(ffmpeg qrencode curl ca-certificates)
+step "Installiere Pakete (ffmpeg, aria2, qrencode$([[ -n "$DOMAIN" ]] && echo ", certbot"))"
+packages=(ffmpeg aria2 qrencode curl ca-certificates)
 [[ -n "$DOMAIN" ]] && packages+=(certbot python3-certbot-nginx)
 DEBIAN_FRONTEND=noninteractive apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${packages[@]}" >/dev/null
@@ -118,6 +118,8 @@ if [[ -f "$HERE/server/package-lock.json" ]]; then
 else
   (cd "$INSTALL_DIR/server" && PATH="$NODE_DIR:$PATH" npm install --omit=dev --no-audit --no-fund --loglevel=error)
 fi
+# webtorrent was pulled in older installs as an optional dep but is now replaced by aria2
+rm -rf "$INSTALL_DIR/server/node_modules/webtorrent" 2>/dev/null || true
 ok "Server-Code und Abhängigkeiten installiert"
 
 if $FIRST_INSTALL; then

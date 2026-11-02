@@ -45,6 +45,7 @@ export const config = {
   ffmpegPath: process.env.FFMPEG_PATH || 'ffmpeg',
   ffprobePath: process.env.FFPROBE_PATH || 'ffprobe',
   ytdlpPath: process.env.YTDLP_PATH || 'yt-dlp',
+  aria2Path: process.env.ARIA2_PATH || 'aria2c',
   ytdlpExtraArgs: (process.env.YTDLP_EXTRA_ARGS || '').split(' ').filter(Boolean),
   // Pause before each download (seconds, randomised up to twice the value); makes the server look less like a bot.
   downloadPauseSeconds: Number(process.env.DOWNLOAD_PAUSE_SECONDS ?? 2),
