@@ -16,6 +16,8 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 button, input { font: inherit; color: inherit; }
+/* UI primitives below set display:grid/flex, which otherwise overrides the HTML `hidden` attribute. */
+[hidden] { display: none !important; }
 
 header#topbar {
   display: flex; align-items: center; gap: 12px; padding: 10px 20px;
