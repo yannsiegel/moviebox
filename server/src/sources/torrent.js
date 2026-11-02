@@ -13,6 +13,33 @@ import { VIDEO_EXTENSIONS } from '../parse-filename.js';
 
 let _client = null;
 let _loadError = null;
+let _globalGuardInstalled = false;
+
+/** webtorrent sometimes throws TypeErrors from inside its own internals when it
+ *  dislikes a magnet string. That bypasses the torrent.on('error') listener and
+ *  kills the whole node process. A top-level guard keeps moviebox alive. */
+function installGlobalGuard() {
+  if (_globalGuardInstalled) return;
+  _globalGuardInstalled = true;
+  process.on('uncaughtException', (err) => {
+    const stack = err?.stack || '';
+    if (stack.includes('webtorrent') || stack.includes('uint8-util')) {
+      console.error(`[torrent] swallowed uncaughtException: ${err.message}`);
+      return;
+    }
+    // not our fault — crash the way the process would normally
+    console.error('uncaughtException', err);
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (err) => {
+    const stack = err?.stack || '';
+    if (stack.includes('webtorrent') || stack.includes('uint8-util')) {
+      console.error(`[torrent] swallowed unhandledRejection: ${err.message}`);
+      return;
+    }
+    throw err;
+  });
+}
 
 async function client() {
   if (_client) return _client;
@@ -20,6 +47,7 @@ async function client() {
   try {
     const mod = await import('webtorrent');
     const WebTorrent = mod.default || mod.WebTorrent || mod;
+    installGlobalGuard();
     _client = new WebTorrent();
     _client.on('error', (err) => console.warn(`[torrent] client: ${err.message || err}`));
     return _client;
@@ -29,6 +57,15 @@ async function client() {
   }
 }
 
+/** Minimum shape of a magnet URI we're willing to hand to webtorrent. */
+function validateMagnet(uri) {
+  if (typeof uri !== 'string' || !uri.startsWith('magnet:')) {
+    throw new Error('Kein magnet-link');
+  }
+  const m = uri.match(/urn:btih:([a-fA-F0-9]{40}|[A-Z2-7]{32})/);
+  if (!m) throw new Error('magnet-link ohne gültigen info-hash');
+}
+
 /** True if webtorrent could be loaded. The server advertises this to the UI. */
 export async function available() {
   try { await client(); return true; } catch { return false; }
@@ -36,11 +73,18 @@ export async function available() {
 
 /** Add a magnet, wait for completion, return the path of the largest video file. */
 export async function download(magnetOrUrl, targetDir, { onProgress } = {}) {
+  validateMagnet(magnetOrUrl);
   const c = await client();
   await fs.mkdir(targetDir, { recursive: true });
 
   return new Promise((resolve, reject) => {
-    const torrent = c.add(magnetOrUrl, { path: targetDir, destroyStoreOnDestroy: false });
+    let torrent;
+    try {
+      torrent = c.add(magnetOrUrl, { path: targetDir, destroyStoreOnDestroy: false });
+    } catch (err) {
+      return reject(new Error(`webtorrent.add warf: ${err.message}`));
+    }
+    if (!torrent) return reject(new Error('webtorrent.add gab kein torrent zurück'));
 
     const progressTimer = setInterval(() => {
       if (!onProgress) return;
