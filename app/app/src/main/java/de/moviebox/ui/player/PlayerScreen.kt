@@ -27,9 +27,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -66,25 +69,57 @@ fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit, onPlayNext
         val sourceFactory = DefaultMediaSourceFactory(context).setDataSourceFactory(
             DefaultHttpDataSource.Factory().setDefaultRequestProperties(mapOf("Authorization" to "Bearer ${Api.token}"))
         )
-        ExoPlayer.Builder(context).setMediaSourceFactory(sourceFactory).build().apply {
-            setMediaItem(MediaItem.fromUri(streamUrl))
-            prepare()
-            playWhenReady = true
-        }
+        // Enable extension (software) renderers as a fallback for codecs the device's hardware
+        // decoder can't handle - this catches a lot of "schwarzer screen bei HEVC/10bit" cases.
+        val renderers = DefaultRenderersFactory(context)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setEnableDecoderFallback(true)
+        // Give the player a generous buffer so slow-start streams don't give up at the first stall.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                15_000,      // minBufferMs
+                60_000,      // maxBufferMs
+                1_500,       // bufferForPlaybackMs
+                3_000,       // bufferForPlaybackAfterRebufferMs
+            )
+            .build()
+        ExoPlayer.Builder(context, renderers)
+            .setMediaSourceFactory(sourceFactory)
+            .setLoadControl(loadControl)
+            .build().apply {
+                setMediaItem(MediaItem.fromUri(streamUrl))
+                prepare()
+                playWhenReady = true
+            }
     }
 
-    // Listen for playback end; if this is an episode, offer the next one.
+    // Capture playback errors + state so we can show the user what actually broke.
+    var playerError by remember { mutableStateOf<String?>(null) }
+    var playerState by remember { mutableStateOf<String?>(null) }
+
+    // Listen for playback end + errors; the error overlay is the whole point of this screen
+    // being useful when something breaks on an unknown codec.
     DisposableEffect(mediaId) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) {
-                    finalScope.launch {
-                        try {
-                            // next-episode endpoint returns 404 for a movie id; the catch covers that.
-                            nextEpisode = runCatching { Api.service.episodeNext(mediaId).next }.getOrNull()
-                        } catch (_: Exception) {}
+                playerState = when (state) {
+                    Player.STATE_IDLE -> "IDLE"
+                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_READY -> null
+                    Player.STATE_ENDED -> {
+                        finalScope.launch {
+                            try { nextEpisode = runCatching { Api.service.episodeNext(mediaId).next }.getOrNull() }
+                            catch (_: Exception) {}
+                        }
+                        "ENDED"
                     }
+                    else -> null
                 }
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                val code = error.errorCodeName
+                val cause = error.cause?.message ?: ""
+                playerError = "Fehler $code\n${error.message}\n$cause".trim()
             }
         }
         player.addListener(listener)
@@ -151,6 +186,35 @@ fun PlayerScreen(mediaId: String, title: String, onClose: () -> Unit, onPlayNext
             modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(44.dp).background(Color(0x99000000), CircleShape),
         ) {
             Icon(Icons.Filled.Close, contentDescription = "Schließen", tint = Color.White)
+        }
+
+        // Full-screen diagnostic overlay when playback can't start / crashes
+        playerError?.let { msg ->
+            Box(
+                Modifier.fillMaxSize().background(Color(0xDD000000)).padding(32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Wiedergabe fehlgeschlagen", color = Color(0xFFE94560), style = MaterialTheme.typography.titleLarge)
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
+                    Text(msg, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(16.dp))
+                    Text(
+                        "Häufigste ursachen:\n• codec vom gerät nicht unterstützt (10-bit HEVC, Dolby Vision)\n• datei noch unvollständig heruntergeladen\n• netzwerk-timeout",
+                        color = Color(0xFFCCCCCC), style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+        // Buffering state readout bottom-left
+        playerState?.let { st ->
+            Text(
+                st,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)
+                    .background(Color(0x99000000), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp),
+            )
         }
     }
 
