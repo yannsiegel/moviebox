@@ -80,9 +80,17 @@ export async function download(magnetOrUrl, targetDir, { onProgress } = {}) {
   return new Promise((resolve, reject) => {
     const args = [
       '--dir=' + targetDir,
-      '--seed-time=0',                                       // stop seeding once done
-      '--bt-stop-timeout=600',                               // give up after 10 min with no progress
-      '--summary-interval=5',                                // print progress every 5s
+      // --- No seeding, minimal upload ---
+      // seed-time=0 + seed-ratio=0.0: stop seeding the very moment the download finishes.
+      // max-upload-limit=1K: BitTorrent's tit-for-tat means some upload is unavoidable during
+      // the download itself (peers refuse to send you blocks without reciprocity), but 1 KB/s
+      // is practically invisible and keeps our footprint minimal for the duration.
+      '--seed-time=0',
+      '--seed-ratio=0.0',
+      '--max-upload-limit=1K',
+      '--max-overall-upload-limit=1K',
+      '--bt-stop-timeout=600',
+      '--summary-interval=5',
       '--console-log-level=warn',
       '--bt-tracker=' + PUBLIC_TRACKERS,
       '--enable-dht=true',
