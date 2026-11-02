@@ -20,15 +20,19 @@ const PREVIEW_SUBDIR = 'preview';
 async function processOne() {
   const tenant = activeTenant();
   if (!tenant) return false;
-  const job = await db.jobs.findOne({ kind: 'download-url', status: 'queued' }, { sort: { createdAt: 1 } });
+  // Atomic claim: findOneAndUpdate flips queued -> running in one DB op so two
+  // concurrent ticks can never grab the same job.
+  const job = await db.jobs.findOneAndUpdate(
+    { kind: 'download-url', status: 'queued' },
+    { $set: { status: 'running', updatedAt: new Date() } },
+    { sort: { createdAt: 1 }, returnDocument: 'after' },
+  );
   if (!job) return false;
 
   const { url, mode, keepHours } = job.payload || {};
   const targetDir = mode === 'preview'
     ? path.join(tenant.videoDir, PREVIEW_SUBDIR)
     : tenant.videoDir;
-
-  await db.jobs.updateOne({ _id: job._id }, { $set: { status: 'running', updatedAt: new Date() } });
 
   try {
     const result = await sources.download(url, targetDir, {
@@ -88,13 +92,22 @@ async function processOne() {
   }
 }
 
+let _ticking = false;
 async function tick() {
+  // Re-entrancy guard: subscription-check, upload, and manual add all emit
+  // `download-queued`. Without this, several ticks run in parallel and race
+  // to grab jobs — the downloads then compete for the same bandwidth and
+  // nobody gets peers. One tick at a time; a new emit while already ticking
+  // is coalesced by this flag.
+  if (_ticking) return;
+  _ticking = true;
   try {
     const any = await forEachUser(processOne, 'Downloader');
-    if (any) { setImmediate(tick); return; }
+    if (any) { _ticking = false; setImmediate(tick); return; }
   } catch (err) {
     console.error(`Downloader loop: ${err.message}`);
   }
+  _ticking = false;
   setTimeout(tick, 10_000);
 }
 
