@@ -19,14 +19,14 @@
     <input id="search-input" type="search" placeholder="Suchen …" aria-label="Suchen">
   </div>
   <div class="actions">
-    <button id="random-btn" title="Zufall">🎲</button>
-    <button id="favorites-btn" title="Lieblinge">❤</button>
-    <button id="watchlists-btn" title="Listen">☰</button>
-    <button id="url-btn" title="URL hinzufügen">+</button>
-    <button id="upload-btn" title="Hochladen">⬆</button>
-    <button id="scan-btn" title="Jetzt scannen">↻</button>
-    <button id="admin-btn" title="Admin">⚙</button>
-    <button id="logout-btn" title="Abmelden">⎋</button>
+    <button id="random-btn" title="Zufall" aria-label="Zufall"></button>
+    <button id="favorites-btn" title="Lieblinge" aria-label="Lieblinge"></button>
+    <button id="watchlists-btn" title="Listen" aria-label="Listen"></button>
+    <button id="url-btn" title="URL hinzufügen" aria-label="URL hinzufügen"></button>
+    <button id="upload-btn" title="Hochladen" aria-label="Hochladen"></button>
+    <button id="scan-btn" title="Jetzt scannen" aria-label="Jetzt scannen"></button>
+    <button id="admin-btn" title="Admin" aria-label="Admin"></button>
+    <button id="logout-btn" title="Abmelden" aria-label="Abmelden"></button>
   </div>
 </header>
 
@@ -60,9 +60,11 @@
 
 <div id="drop-overlay" hidden><div>Datei hier ablegen</div></div>
 <div id="toast" hidden></div>
+<div id="status-widget" hidden></div>
 
 <input id="file-picker" type="file" accept="video/*,.mkv,.mp4,.m4v,.mov,.avi,.ts,.m2ts,.webm" multiple hidden>
 
+<script src="icons.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

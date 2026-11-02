@@ -5,7 +5,9 @@
 // a manual "scan now" and job status for the admin.
 
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { db, serialize, toObjectId } from './db.js';
 import { AuthError, acceptInvite, createInvite, createUser, deleteUser, listUsers, login, logout, publicUser, rotateServerToken, setPassword, updateProfile, userForToken } from './users.js';
@@ -21,6 +23,15 @@ import { checkAll as checkSubscriptions } from './subscriptions.js';
 
 export const api = express.Router();
 api.use(express.json({ limit: '1mb' }));
+
+// Read our own package.json for the version string. process.env.npm_package_version
+// is only set when started via `npm start`; systemd runs node directly.
+const PKG_VERSION = (() => {
+  try {
+    const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+    return JSON.parse(readFileSync(pkgPath, 'utf8')).version || 'dev';
+  } catch { return process.env.npm_package_version || 'dev'; }
+})();
 
 // ------------------------------------------------------------------ helpers
 
@@ -63,7 +74,7 @@ function handle(fn) {
 // ------------------------------------------------------------------ public
 
 api.get('/health', (_req, res) => {
-  res.json({ ok: true, version: process.env.npm_package_version || 'dev' });
+  res.json({ ok: true, version: PKG_VERSION });
 });
 
 api.post('/login', handle(async (req, res) => {
@@ -349,6 +360,14 @@ api.get('/media/:id/resume', handle(async (req, res) => {
   res.json({ positionSec: row?.positionSec || 0, completed: Boolean(row?.completed) });
 }));
 
+/** Bulk resume map for the current user, so cards can show "gesehen" badges in one call. */
+api.get('/me/resume', handle(async (_req, res) => {
+  const rows = await db.resume.find({}).toArray();
+  res.json({
+    rows: rows.map((r) => ({ mediaId: String(r.mediaId), positionSec: r.positionSec || 0, completed: Boolean(r.completed) })),
+  });
+}));
+
 api.post('/media/:id/resume', handle(async (req, res) => {
   const positionSec = Math.max(0, Number(req.body?.positionSec) || 0);
   const durationSec = Math.max(0, Number(req.body?.durationSec) || 0);
@@ -401,7 +420,7 @@ api.post('/admin/server-token/rotate', requireAdmin, handle(async (_req, res) =>
 api.get('/admin/status', requireAdmin, handle(async (_req, res) => {
   const jobs = await db.jobs.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]).toArray();
   res.json({
-    version: process.env.npm_package_version || 'dev',
+    version: PKG_VERSION,
     node: process.version,
     uptimeSeconds: Math.round(process.uptime()),
     memoryMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),

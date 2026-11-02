@@ -4,6 +4,7 @@
 
 (() => {
   const $ = (sel) => document.querySelector(sel);
+  const Ico = window.MBIcons.icon;
   const el = (tag, attrs = {}, children = []) => {
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -21,6 +22,9 @@
     token: sessionStorage.getItem('mb_token') || '',
     view: 'home',
     isAdmin: false,
+    resumeMap: new Map(),       // mediaId -> { positionSec, completed }
+    jobsTimer: null,
+    jobsCollapsed: false,
   };
 
   async function api(path, options = {}) {
@@ -43,11 +47,89 @@
   function toast(message, kind = 'ok', ms = 3000) {
     const t = $('#toast');
     t.className = kind;
-    t.textContent = message;
+    t.innerHTML = '';
+    t.appendChild(Ico(kind === 'err' ? 'alert' : 'check'));
+    t.appendChild(document.createTextNode(' ' + message));
     t.hidden = false;
     clearTimeout(toast._timer);
     toast._timer = setTimeout(() => { t.hidden = true; }, ms);
   }
+
+  // ---------- skeleton loaders ----------
+  function skeletonGrid(count = 10) {
+    const g = el('div', { class: 'skeleton-grid' });
+    for (let i = 0; i < count; i++) {
+      const card = el('div', { class: 'skeleton-card' });
+      card.appendChild(el('div', { class: 'skeleton poster' }));
+      card.appendChild(el('div', { class: 'skeleton line' }));
+      card.appendChild(el('div', { class: 'skeleton line short' }));
+      g.appendChild(card);
+    }
+    return g;
+  }
+
+  function spinner(large = false) {
+    return el('div', { class: 'spinner' + (large ? ' large' : '') });
+  }
+
+  // ---------- status widget (persistent bottom-right) ----------
+  function initStatusWidget() {
+    const widget = $('#status-widget');
+    widget.innerHTML = '';
+    const header = el('div', { class: 'header', onClick: () => widget.classList.toggle('collapsed') });
+    header.appendChild(Ico('download', { size: 16 }));
+    header.appendChild(el('span', { class: 'label' }, 'Downloads'));
+    const count = el('span', { class: 'count', style: 'display:none' }, '0');
+    header.appendChild(count);
+    const toggle = el('span', { class: 'toggle' });
+    toggle.appendChild(Ico('chevronDown', { size: 14 }));
+    header.appendChild(toggle);
+    widget.appendChild(header);
+    const body = el('div', { class: 'body' });
+    widget.appendChild(body);
+
+    async function refresh() {
+      try {
+        const { jobs } = await api('/sources/jobs');
+        const active = jobs.filter((j) => j.status === 'queued' || j.status === 'running');
+        if (!jobs.length) { widget.hidden = true; return; }
+        widget.hidden = false;
+        count.textContent = active.length;
+        count.style.display = active.length ? '' : 'none';
+        body.innerHTML = '';
+        for (const j of jobs.slice(0, 8)) {
+          const row = el('div', { class: 'job' });
+          row.appendChild(el('div', { class: 'url', title: j.payload?.url || '' }, j.payload?.url || '(ohne URL)'));
+          const meta = el('div', { class: 'meta' });
+          const statusClass = j.status === 'done' ? 'ok' : (j.status === 'failed' ? 'err' : '');
+          meta.appendChild(el('span', { class: statusClass }, j.status));
+          if (j.payload?.mode === 'preview') meta.appendChild(el('span', {}, 'preview'));
+          if (j.progress?.pct !== undefined) meta.appendChild(el('span', {}, j.progress.pct.toFixed(1) + ' %'));
+          if (j.progress?.speed) meta.appendChild(el('span', {}, j.progress.speed));
+          row.appendChild(meta);
+          if (j.progress?.pct !== undefined && j.status !== 'done' && j.status !== 'failed') {
+            const bar = el('div', { class: 'bar' });
+            bar.appendChild(el('div', { style: `width:${j.progress.pct}%` }));
+            row.appendChild(bar);
+          }
+          if (j.error) row.appendChild(el('div', { class: 'meta', style: 'color:var(--err)' }, j.error));
+          body.appendChild(row);
+        }
+      } catch { /* server unreachable, hide */ widget.hidden = true; }
+    }
+    refresh();
+    clearInterval(State.jobsTimer);
+    State.jobsTimer = setInterval(refresh, 3000);
+  }
+
+  // ---------- resume map (for watched indicators) ----------
+  async function refreshResumeMap() {
+    try {
+      const { rows } = await api('/me/resume');
+      State.resumeMap = new Map(rows.map((r) => [r.mediaId, r]));
+    } catch { State.resumeMap = new Map(); }
+  }
+  function resumeFor(id) { return State.resumeMap.get(id) || {}; }
 
   // ---------- login ----------
   function renderLogin() {
@@ -78,7 +160,23 @@
       State.isAdmin = me.user.role === 'admin';
     } catch { /* token stale, renderLogin already handled by api() */ return; }
     $('#admin-btn').style.display = State.isAdmin ? '' : 'none';
+    paintTopbarIcons();
+    initStatusWidget();
     nav('home');
+  }
+
+  function paintTopbarIcons() {
+    const map = {
+      'random-btn': 'dice', 'favorites-btn': 'heart', 'watchlists-btn': 'list',
+      'url-btn': 'plus', 'upload-btn': 'upload', 'scan-btn': 'refresh',
+      'admin-btn': 'settings', 'logout-btn': 'logout',
+    };
+    for (const [id, name] of Object.entries(map)) {
+      const btn = document.getElementById(id);
+      if (!btn) continue;
+      btn.innerHTML = '';
+      btn.appendChild(Ico(name));
+    }
   }
 
   // ---------- navigation ----------
@@ -87,7 +185,9 @@
     for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t.dataset.view === view);
     const container = $('#view');
     container.innerHTML = '';
-    container.appendChild(el('div', { class: 'empty' }, 'Laden …'));
+    container.appendChild(skeletonGrid(view === 'discover' ? 10 : 15));
+    // keep the watched-indicator map warm for every view
+    refreshResumeMap();
     try {
       if (view === 'home') await renderHome(container);
       else if (view === 'movies') await renderMovies(container);
@@ -110,13 +210,24 @@
     if (m.poster) poster.appendChild(el('img', { src: m.poster, loading: 'lazy', alt: m.title }));
     else poster.appendChild(el('div', { class: 'fallback' }, m.title));
     if (m.preview) poster.appendChild(el('div', { class: 'badge' }, 'PREVIEW'));
-    if (m.liked) poster.appendChild(el('div', { class: 'badge heart' }, '❤'));
+    if (m.liked) {
+      const heart = el('div', { class: 'badge heart' });
+      heart.appendChild(Ico('heart', { size: 12 }));
+      poster.appendChild(heart);
+    }
+    const resume = resumeFor(m.id);
+    if (resume.completed) {
+      const watched = el('div', { class: 'watched', title: 'Gesehen' });
+      watched.appendChild(Ico('check', { size: 12, strokeWidth: 3 }));
+      poster.appendChild(watched);
+    }
     card.appendChild(poster);
     card.appendChild(el('div', { class: 'title' }, m.title));
     if (m.year) card.appendChild(el('div', { class: 'sub' }, String(m.year)));
-    if (m.positionSec && m.runtimeSec) {
+    const pos = m.positionSec ?? resume.positionSec;
+    if (pos && m.runtimeSec && !resume.completed) {
       const bar = el('div', { class: 'progress' });
-      bar.appendChild(el('div', { style: `width:${Math.min(100, (m.positionSec / m.runtimeSec) * 100).toFixed(1)}%` }));
+      bar.appendChild(el('div', { style: `width:${Math.min(100, (pos / m.runtimeSec) * 100).toFixed(1)}%` }));
       card.appendChild(bar);
     }
     return card;
@@ -127,13 +238,24 @@
     if (e.still) poster.appendChild(el('img', { src: e.still, loading: 'lazy', alt: e.title }));
     else poster.appendChild(el('div', { class: 'fallback' }, `S${e.season}E${e.episode}`));
     if (e.preview) poster.appendChild(el('div', { class: 'badge' }, 'PREVIEW'));
-    if (e.liked) poster.appendChild(el('div', { class: 'badge heart' }, '❤'));
+    if (e.liked) {
+      const heart = el('div', { class: 'badge heart' });
+      heart.appendChild(Ico('heart', { size: 12 }));
+      poster.appendChild(heart);
+    }
+    const resume = resumeFor(e.id);
+    if (resume.completed) {
+      const watched = el('div', { class: 'watched', title: 'Gesehen' });
+      watched.appendChild(Ico('check', { size: 12, strokeWidth: 3 }));
+      poster.appendChild(watched);
+    }
     card.appendChild(poster);
     card.appendChild(el('div', { class: 'title' }, e.title || `Folge ${e.episode}`));
     card.appendChild(el('div', { class: 'sub' }, `${e.showTitle} · S${e.season}E${String(e.episode).padStart(2, '0')}`));
-    if (e.positionSec && e.runtimeSec) {
+    const pos = e.positionSec ?? resume.positionSec;
+    if (pos && e.runtimeSec && !resume.completed) {
       const bar = el('div', { class: 'progress' });
-      bar.appendChild(el('div', { style: `width:${Math.min(100, (e.positionSec / e.runtimeSec) * 100).toFixed(1)}%` }));
+      bar.appendChild(el('div', { style: `width:${Math.min(100, (pos / e.runtimeSec) * 100).toFixed(1)}%` }));
       card.appendChild(bar);
     }
     return card;
@@ -228,6 +350,14 @@
     } catch (err) { toast(err.message, 'err'); }
   }
 
+  function statChip(iconName, label, value) {
+    const chip = el('span', { class: 'stat' });
+    chip.appendChild(Ico(iconName, { size: 14 }));
+    chip.appendChild(el('span', { class: 'k' }, label));
+    chip.appendChild(el('span', { class: 'v' }, String(value)));
+    return chip;
+  }
+
   // ---------- empty state ----------
   function emptyLibrary(parentContainer) {
     const empty = el('div', { class: 'empty' });
@@ -245,8 +375,15 @@
 
   // ---------- home ----------
   async function renderHome(container) {
-    const data = await api('/home');
+    const [data, summary] = await Promise.all([api('/home'), api('/library/summary').catch(() => null)]);
     container.innerHTML = '';
+    if (summary && (summary.movies || summary.shows || summary.episodes)) {
+      const stats = el('div', { class: 'lib-stats' });
+      stats.appendChild(statChip('film', 'Filme', summary.movies));
+      stats.appendChild(statChip('tv', 'Serien', summary.shows));
+      stats.appendChild(statChip('tv', 'Folgen', summary.episodes));
+      container.appendChild(stats);
+    }
     if (!data.continue?.length && !data.recentMovies?.length && !data.recentEpisodes?.length) {
       emptyLibrary(container);
       return;
@@ -417,7 +554,10 @@
 
     const buttons = el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;align-items:center' });
     const playLabel = positionSec > 15 ? `Fortsetzen bei ${formatTime(positionSec)}` : 'Abspielen';
-    buttons.appendChild(el('button', { class: 'play', onClick: () => play({ id, title: movie.title, positionSec }) }, '▶  ' + playLabel));
+    const playBtn = el('button', { class: 'play', onClick: () => play({ id, title: movie.title, positionSec }) });
+    playBtn.appendChild(Ico('play'));
+    playBtn.appendChild(el('span', { style: 'margin-left:8px' }, playLabel));
+    buttons.appendChild(playBtn);
     buttons.appendChild(likeButton(id, movie.liked));
     buttons.appendChild(watchlistButton({ mediaId: id, kind: 'movie' }, movie.title));
     buttons.appendChild(deleteButton(id, movie.title, () => nav('movies')));
@@ -581,6 +721,19 @@
     $('#player-title').textContent = title;
     playerEl.hidden = false;
 
+    // buffering spinner overlay
+    const buffering = el('div', { class: 'buffering', id: 'buffering' });
+    buffering.appendChild(spinner(true));
+    playerEl.appendChild(buffering);
+    buffering.style.display = 'none';
+    const showBuffer = () => { buffering.style.display = ''; };
+    const hideBuffer = () => { buffering.style.display = 'none'; };
+    video.addEventListener('waiting', showBuffer);
+    video.addEventListener('stalled', showBuffer);
+    video.addEventListener('loadstart', showBuffer);
+    video.addEventListener('playing', hideBuffer);
+    video.addEventListener('canplay', hideBuffer);
+
     // Add sidecar subtitles as <track> elements for in-browser switching.
     // Movies and episodes both have .subtitles[] in their detail endpoint.
     const detailPath = isEpisode ? `/episodes/${id}` : `/movies/${id}`;
@@ -613,6 +766,8 @@
       video.pause(); video.removeAttribute('src'); video.load();
       const overlay = document.getElementById('next-overlay');
       if (overlay) overlay.remove();
+      const buf = document.getElementById('buffering');
+      if (buf) buf.remove();
     };
     $('#player-close').onclick = () => { cleanup(); playerEl.hidden = true; };
 
