@@ -49,8 +49,11 @@ export async function serveMedia(req, res, item) {
   const type = contentTypeFor(absolute);
 
   if (config.accelRedirectPrefix) {
+    // X-Accel-Redirect expects a URL-path, so each path segment must be URI-encoded
+    // (spaces, parens, brackets - all common in torrent folder names). Slashes stay.
+    const encodedPath = item.path.split('/').map(encodeURIComponent).join('/');
     res.set('Content-Type', type);
-    res.set('X-Accel-Redirect', path.posix.join(config.accelRedirectPrefix, item.path));
+    res.set('X-Accel-Redirect', path.posix.join(config.accelRedirectPrefix, encodedPath));
     res.set('Accept-Ranges', 'bytes');
     res.end();
     return;
